@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, Lightbulb, Menu, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
-import { alternativeBranches, assumption, branches, chapters, clues, findings, loadingSteps, manuscript, questions, type Branch } from './data/mock'
+import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, Lightbulb, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
+import { alternativeBranches, assumption, branches, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, type Branch } from './data/mock'
 
 type PanelState = 'input' | 'loading' | 'result' | 'empty' | 'boundary' | 'clues'
 type Feedback = { message: string; action: string } | null
+type Page = 'schreibraum' | 'fundgrube'
+type FundgrubeView = 'Übersicht' | 'Figuren' | 'Orte' | 'Offene Fäden' | 'Widersprüche'
 
 const panelLabels: Record<PanelState, string> = {
   input: 'Eingabe', loading: 'Lädt', result: 'Ergebnis', empty: 'Nichts gefunden', boundary: 'Grenzfall', clues: 'Spuren legen',
@@ -29,6 +31,7 @@ export default function App() {
   const [selectedLens, setSelectedLens] = useState('neutral')
   const [selectedClue, setSelectedClue] = useState<number | null>(null)
   const [branchSaved, setBranchSaved] = useState(false)
+  const [page, setPage] = useState<Page>('schreibraum')
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -55,12 +58,16 @@ export default function App() {
     else act(`„${branch.title}“ bleibt als Möglichkeit sichtbar.`, 'Gemerkte Möglichkeit')
   }
 
+  if (page === 'fundgrube') {
+    return <Fundgrube volume={volume} setVolume={setVolume} onWritingRoom={() => setPage('schreibraum')} />
+  }
+
   return (
     <main className={`app ${panel ? 'panel-open' : ''}`}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
         <div className="project-title"><span>Der Sommer der Könige</span><ChevronDown size={15} /></div>
-        <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link">Fundgrube <span className="new-dot">3</span></button><button className="nav-link">Versionen & Zweige</button></nav>
+        <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link" onClick={() => { setPanel(null); setPage('fundgrube') }}>Fundgrube <span className="new-dot">3</span></button><button className="nav-link">Versionen & Zweige</button></nav>
         <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={e => setVolume(e.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
       </header>
 
@@ -100,6 +107,51 @@ export default function App() {
     </main>
   )
 }
+
+function Fundgrube({ volume, setVolume, onWritingRoom }: { volume: string; setVolume: (value: string) => void; onWritingRoom: () => void }) {
+  const [view, setView] = useState<FundgrubeView>('Übersicht')
+  const [findingsState, setFindingsState] = useState<Record<string, 'new' | 'confirmed' | 'removed'>>({})
+  const [threadStatus, setThreadStatus] = useState(() => Object.fromEntries(fundgrubeThreads.map(thread => [thread.id, thread.status])) as Record<string, string>)
+  const [contradictionVisible, setContradictionVisible] = useState(true)
+  const visibleFindings = fundgrubeFindings.filter(finding => findingsState[finding.id] !== 'removed')
+  const newCount = fundgrubeFindings.filter(finding => !findingsState[finding.id] || findingsState[finding.id] === 'new').length
+  const cycleStatus = (id: string) => setThreadStatus(current => ({ ...current, [id]: current[id] === 'offen' ? 'bewusst offen' : current[id] === 'bewusst offen' ? 'loslassen' : 'offen' }))
+  const show = (name: FundgrubeView) => view === 'Übersicht' || view === name
+
+  return <main className="app fundgrube-app">
+    <header className="topbar">
+      <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
+      <div className="project-title"><span>Der Sommer der Könige</span><ChevronDown size={15} /></div>
+      <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link current">Fundgrube {newCount > 0 && <span className="new-dot">{newCount}</span>}</button><button className="nav-link">Versionen & Zweige</button></nav>
+      <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={event => setVolume(event.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
+    </header>
+    <div className="fundgrube-layout">
+      <aside className="fundgrube-sidebar"><div className="side-title"><span>FUNDGRUBE</span></div>{(['Übersicht', 'Figuren', 'Orte', 'Offene Fäden', 'Widersprüche'] as FundgrubeView[]).map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{item}<span>{item === 'Figuren' ? 6 : item === 'Orte' ? 4 : item === 'Offene Fäden' ? 5 : item === 'Widersprüche' ? 1 : ''}</span></button>)}<div className="gathered-note">Still gesammelt aus Kap. 1–18.<br />Nichts ändert deinen Text.</div></aside>
+      <section className="fundgrube-content">
+        <div className="fundgrube-heading"><div><div className="eyebrow ai-label"><Sparkles size={13} /> STILL GESAMMELT</div><h1>{view}</h1><p>{view === 'Übersicht' ? <>Was deine Geschichte bisher enthält · bezieht sich auf <strong>Kap. 1–18</strong></> : 'Was deine Geschichte bisher enthält'}</p></div>{view === 'Übersicht' && <div className="fund-filter"><Chip active>Alle</Chip><Chip>Neu · {newCount}</Chip><Chip>Bestätigt</Chip></div>}</div>
+        {view === 'Übersicht' && <section className="new-findings"><div className="new-findings-title"><strong>{newCount} neue Fundstücke</strong><span>Du entscheidest, was bleibt.</span></div><div className="new-finding-grid">{visibleFindings.map(finding => <article className="new-finding" key={finding.id}><div className="finding-top"><span>{finding.type}</span>{findingsState[finding.id] === 'confirmed' ? <em>bestätigt</em> : <em><Sparkles size={11} /> von KI gefunden</em>}</div><h3>{finding.title}</h3><button className="fund-source">Quelle: {finding.source}</button><div><button className="confirm" onClick={() => setFindingsState(current => ({ ...current, [finding.id]: 'confirmed' }))}>Bestätigen</button><button>Bearbeiten</button><button onClick={() => setFindingsState(current => ({ ...current, [finding.id]: 'removed' }))}>Entfernen</button></div></article>)}</div></section>}
+        <div className="fundgrube-columns">
+          <div>
+            {show('Figuren') && <FundgrubeFigures />}
+            {show('Orte') && <FundgrubePlaces />}
+          </div>
+          <div>
+            {show('Offene Fäden') && <FundgrubeThreads statuses={threadStatus} onCycle={cycleStatus} />}
+            {show('Widersprüche') && contradictionVisible && <FundgrubeContradiction onDismiss={() => setContradictionVisible(false)} />}
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+}
+
+function FundgrubeFigures() { return <section className="fund-section"><div className="fund-section-title"><h2>Figuren</h2><button>Alle 6 ansehen</button></div><div className="figure-grid">{fundgrubeFigures.map(figure => <article className="figure-card" key={figure.name}><div><h3>{figure.name}</h3><span>bestätigt</span></div><p>{figure.role}</p><small>Erwähnt: {figure.mentioned}</small><div className="figure-tags">{figure.tags.map(tag => <i key={tag}>{tag}</i>)}</div></article>)}</div></section> }
+
+function FundgrubePlaces() { return <section className="fund-section"><div className="fund-section-title"><h2>Orte</h2><button>Alle 4 ansehen</button></div><div className="places-card">{fundgrubePlaces.map(place => <div key={place.name}><span><strong>{place.name}</strong><small>{place.type}</small></span><small>{place.chapters}</small></div>)}</div></section> }
+
+function FundgrubeThreads({ statuses, onCycle }: { statuses: Record<string, string>; onCycle: (id: string) => void }) { return <section className="threads-card"><h2>Offene Fäden</h2><p>Den Status setzt nur du.</p>{fundgrubeThreads.map(thread => <article key={thread.id}><div><h3>{thread.title}</h3><button className="fund-source">{thread.source}</button></div><button className={`thread-status ${statuses[thread.id].replace(' ', '-')}`} onClick={() => onCycle(thread.id)}>{statuses[thread.id]}⌄</button></article>)}</section> }
+
+function FundgrubeContradiction({ onDismiss }: { onDismiss: () => void }) { return <section className="contradiction-card"><div className="contradiction-title"><h2>Möglicher Widerspruch</h2><span><Sparkles size={11} /> KI-Hinweis</span></div><h3>{fundgrubeContradiction.title}</h3><p>Vielleicht Absicht. Du entscheidest.</p><button className="confirm">Zu den Stellen</button><button onClick={onDismiss}>Ist Absicht</button></section> }
 
 function InputPanel(props: { scope: string; setScope: (value: string) => void; intent: string; setIntent: (value: string) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; onStart: () => void; onBoundary: () => void }) {
   return <div className="panel-content input-panel"><div className="selected-text"><span>MARKIERTE STELLE</span><p>„{manuscript.selection}“</p></div><section><h3>Wobei soll ich schauen?</h3><div className="chips">{['Kap. 1–18', 'nur dieses Kapitel', 'nur Figur: Mira'].map(value => <Chip key={value} active={props.scope === value} onClick={() => props.setScope(value)}>{value}</Chip>)}</div></section><section><h3>Was brauchst du gerade?</h3><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => props.setIntent(value)}>{value}</Chip>)}</div></section><section className="assumption"><div className="assumption-title"><span>Ich verstehe …</span><button onClick={() => props.setEditing(!props.editing)}>{props.editing ? 'Fertig' : 'Ändern'}</button></div>{props.editing ? <textarea value={props.assumptionText} onChange={event => props.setAssumptionText(event.target.value)} /> : <p>{props.assumptionText}</p>}</section><label className="optional-question">Eigene Frage stellen …<input placeholder="Optional" onChange={event => { if (event.target.value.toLowerCase().includes('schreib')) props.onBoundary() }} /></label><button className="primary-button" onClick={props.onStart}><Sparkles size={17} />Innehalten</button></div>

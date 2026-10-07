@@ -24,16 +24,22 @@ export const assumption = 'Dir fehlt ein Thronfolger, weil Prinz Edrik in Kap. 4
 
 export const findings = [
   {
-    label: 'Offener Faden',
-    title: 'Thronfolge',
-    text: 'Prinz Edrik stirbt, danach wird kein Erbe genannt.',
-    sources: [{ chapter: 4, page: 61 }, { chapter: 18, page: 302 }] satisfies Source[],
+    label: 'Figur',
+    title: 'Der Gesandte aus Velmor',
+    text: 'Eine neue Figur wird in Kap. 17 erstmals erwähnt.',
+    sources: [{ chapter: 17, page: 288 }] satisfies Source[],
   },
   {
-    label: 'Figur',
-    title: 'Mira',
-    text: 'Mira vermeidet die Frage nach ihrer Herkunft seit Kap. 7.',
-    sources: [{ chapter: 7, page: 108 }] satisfies Source[],
+    label: 'Ort',
+    title: 'Der Nordhof',
+    text: 'Der Ort wird in Kap. 18 zweimal erwähnt.',
+    sources: [{ chapter: 18, page: 303 }] satisfies Source[],
+  },
+  {
+    label: 'Offener Faden',
+    title: '„Das andere Siegel“',
+    text: 'Ein Faden aus Kap. 11 taucht zuletzt in Kap. 16 wieder auf.',
+    sources: [{ chapter: 11, page: 190 }, { chapter: 16, page: 270 }] satisfies Source[],
   },
 ]
 
@@ -90,3 +96,36 @@ export const loadingSteps = [
   '14 Figuren, 9 Fäden gefunden',
   'Zusammenhänge prüfen',
 ]
+
+export const fundgrubeFindings = [
+  { id: 'velmor', type: findings[0].label, title: findings[0].title, source: 'Kap. 17, S. 288 · 1 Erwähnung' },
+  { id: 'nordhof', type: findings[1].label, title: findings[1].title, source: 'Kap. 18, S. 303 · 2 Erwähnungen' },
+  { id: 'siegel', type: 'Faden', title: findings[2].title, source: 'Kap. 11, S. 190 · zuletzt Kap. 16 ↗' },
+]
+
+export const fundgrubeFigures = [
+  { name: 'Teo', role: 'Hauptmann der Wache', mentioned: 'Kap. 3 – 18', tags: ['Mira', 'König'] },
+  { name: 'Mira', role: 'Hofdame, Vertraute des Königs', mentioned: 'Kap. 1 – 18', tags: ['Teo', 'König', 'Prinz Edrik'] },
+  { name: 'König Aldric', role: 'Herrscher von Arven · † Kap. 18', mentioned: 'Kap. 1 – 18', tags: ['Mira', 'Prinz Edrik'] },
+  { name: 'Prinz Edrik', role: 'Thronfolger · † Kap. 4', mentioned: 'Kap. 1 – 4', tags: ['König'] },
+]
+
+export const fundgrubePlaces = [
+  { name: 'Arven', type: 'Hauptstadt', chapters: 'Kap. 1 – 18' },
+  { name: 'Turmzimmer', type: 'Ort von Teo', chapters: 'Kap. 16, 18' },
+  { name: 'Königssaal', type: 'Hof', chapters: 'Kap. 2, 17, 18' },
+  { name: 'Nordhof', type: 'Hof', chapters: 'Kap. 18' },
+]
+
+export const fundgrubeThreads = [
+  { id: 'succession', title: 'Thronfolge nach Edriks Tod', source: 'zuletzt Kap. 18, S. 302 ↗', status: 'offen' },
+  { id: 'seal', title: 'Das andere Siegel', source: 'zuletzt Kap. 16, S. 270 ↗', status: 'offen' },
+  { id: 'oath', title: 'Teos Schwur', source: 'zuletzt Kap. 15, S. 251 ↗', status: 'bewusst offen' },
+  { id: 'past', title: 'Miras Vergangenheit', source: 'zuletzt Kap. 7, S. 112 ↗', status: 'bewusst offen' },
+  { id: 'wolf', title: 'Der Wolf am Pass', source: 'zuletzt Kap. 3, S. 41 ↗', status: 'loslassen' },
+]
+
+export const fundgrubeContradiction = {
+  id: 'miras-augen',
+  title: 'Miras Augen: in Kap. 3 „grau“, in Kap. 15 „grün“.',
+}
