@@ -129,3 +129,18 @@ export const fundgrubeContradiction = {
   id: 'miras-augen',
   title: 'Miras Augen: in Kap. 3 „grau“, in Kap. 15 „grün“.',
 }
+
+export const versionsBranches = [
+  { id: 'main', name: 'Hauptlinie', detail: 'Original · zuletzt heute, 20:41' },
+  { id: 'brother', name: 'Zweig „Bruder“', detail: 'aus Innehalten · Kap. 18 · aktiv' },
+  { id: 'mira-claim', name: 'Zweig „Mira beansprucht den Thron“', detail: 'als Notiz geparkt' },
+]
+
+export const versionHistory = [
+  { title: 'Kap. 18 · „Die leere Krone“ weitergeschrieben', detail: 'Heute, 20:41 · Hauptlinie', branch: 'Hauptlinie', tone: 'main' },
+  { title: 'Neuer Zweig „Bruder“ aus Innehalten (Kap. 18)', detail: 'Heute, 20:12 · Lena wählt „Ein Bruder existiert“', branch: 'Zweig „Bruder“', tone: 'branch' },
+  { title: 'Kap. 2 · Hinweis auf den Bruder geschrieben', detail: 'Heute, 20:18 · +1 Satz · von dir geschrieben', branch: 'Zweig „Bruder“', tone: 'author' },
+  { title: 'Kap. 4 · Hinweis am Grab ergänzt', detail: 'Heute, 20:26 · +2 Sätze · von dir geschrieben', branch: 'Zweig „Bruder“', tone: 'author' },
+  { title: 'Kap. 17 · „Das letzte Gelöbnis“ überarbeitet', detail: 'Gestern, 22:05 · Hauptlinie', branch: 'Hauptlinie', tone: 'main' },
+  { title: 'Kap. 16 · „Unter den Zinnen“ abgeschlossen', detail: 'Mo., 21:30 · Hauptlinie', branch: 'Hauptlinie', tone: 'main' },
+]

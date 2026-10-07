@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, Lightbulb, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
-import { alternativeBranches, assumption, branches, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, type Branch } from './data/mock'
+import { alternativeBranches, assumption, branches, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
 
 type PanelState = 'input' | 'loading' | 'result' | 'empty' | 'boundary' | 'clues'
 type Feedback = { message: string; action: string } | null
-type Page = 'schreibraum' | 'fundgrube'
+type Page = 'schreibraum' | 'fundgrube' | 'versionen'
 type FundgrubeView = 'Übersicht' | 'Figuren' | 'Orte' | 'Offene Fäden' | 'Widersprüche'
 
 const panelLabels: Record<PanelState, string> = {
@@ -59,7 +59,10 @@ export default function App() {
   }
 
   if (page === 'fundgrube') {
-    return <Fundgrube volume={volume} setVolume={setVolume} onWritingRoom={() => setPage('schreibraum')} />
+    return <Fundgrube volume={volume} setVolume={setVolume} onWritingRoom={() => setPage('schreibraum')} onVersions={() => setPage('versionen')} />
+  }
+  if (page === 'versionen') {
+    return <Versions volume={volume} setVolume={setVolume} onWritingRoom={() => setPage('schreibraum')} onFundgrube={() => setPage('fundgrube')} />
   }
 
   return (
@@ -67,7 +70,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
         <div className="project-title"><span>Der Sommer der Könige</span><ChevronDown size={15} /></div>
-        <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link" onClick={() => { setPanel(null); setPage('fundgrube') }}>Fundgrube <span className="new-dot">3</span></button><button className="nav-link">Versionen & Zweige</button></nav>
+        <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link" onClick={() => { setPanel(null); setPage('fundgrube') }}>Fundgrube <span className="new-dot">3</span></button><button className="nav-link" onClick={() => { setPanel(null); setPage('versionen') }}>Versionen & Zweige</button></nav>
         <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={e => setVolume(e.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
       </header>
 
@@ -108,7 +111,31 @@ export default function App() {
   )
 }
 
-function Fundgrube({ volume, setVolume, onWritingRoom }: { volume: string; setVolume: (value: string) => void; onWritingRoom: () => void }) {
+function Versions({ volume, setVolume, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; onWritingRoom: () => void; onFundgrube: () => void }) {
+  const [activeBranch, setActiveBranch] = useState('brother')
+  const [notice, setNotice] = useState<string | null>(null)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const active = versionsBranches.find(branch => branch.id === activeBranch) ?? versionsBranches[1]
+  const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(null), 2600) }
+  return <main className="app versions-app">
+    <header className="topbar">
+      <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
+      <div className="project-title"><span>Der Sommer der Könige</span><ChevronDown size={15} /></div>
+      <span className="active-branch-pill">⌘ Zweig: Bruder⌄</span>
+      <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link" onClick={onFundgrube}>Fundgrube <span className="new-dot">3</span></button><button className="nav-link current">Versionen & Zweige</button></nav>
+      <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={event => setVolume(event.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
+    </header>
+    <div className="versions-layout">
+      <aside className="versions-sidebar"><div className="side-title"><span>ZWEIGE</span></div>{versionsBranches.map(branch => <button key={branch.id} className={activeBranch === branch.id ? 'active' : ''} onClick={() => setActiveBranch(branch.id)}><i className={branch.id === 'brother' ? 'green' : ''} /><span><strong>{branch.name}</strong><small>{branch.detail}</small></span></button>)}<div className="versions-note">Nichts geht verloren. Jede Änderung wird automatisch gesichert, das Original bleibt immer erhalten.</div></aside>
+      <section className="versions-content"><div className="versions-heading"><div className="eyebrow author-label">NICHTS GEHT VERLOREN</div><h1>Versionen & Zweige</h1><p>Probier Ideen aus, ohne etwas zu riskieren. Der Zweig „Bruder“ ist gerade aktiv.</p></div>
+        <section className="comparison-card"><div className="comparison-title"><strong>Zweig-Vergleich · Kap. 2 „Zwei Brüder im Schnee“</strong><span><Sparkles size={11} /> Unterschiede markiert</span></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte.</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte. <mark>„Wir waren zwei“, sagte er einmal, und schwieg danach so lange, dass niemand nachzufragen wagte.</mark></p><small>+1 Satz · von dir geschrieben</small></article></div><div className="compare-actions"><button className="author-primary" onClick={() => notify('In die Hauptlinie übernommen')}>Zweig übernehmen</button><button>Im Zweig weiterschreiben</button><button onClick={() => setConfirmDiscard(true)}>Zweig verwerfen</button></div>{confirmDiscard && <div className="discard-confirm"><span>Wirklich verwerfen? Das Original bleibt erhalten.</span><button onClick={() => { setConfirmDiscard(false); notify('Zweig verworfen') }}>Verwerfen</button><button onClick={() => setConfirmDiscard(false)}>Abbrechen</button></div>}</section>
+        <div className="versions-columns"><section className="history"><div className="history-title"><h2>Verlauf</h2><span>automatisch gesichert</span></div><div className="history-card">{versionHistory.map(item => <article key={item.title}><i className={item.tone} /><div><h3>{item.title}</h3><p>{item.detail}</p></div><span className={item.tone === 'author' || item.tone === 'branch' ? 'branch-badge' : 'main-badge'}>{item.branch}</span><button onClick={() => notify('Version wiederhergestellt')}>Wiederherstellen</button></article>)}</div></section><aside><section className="branch-summary"><h2>{active.name}</h2><p>Entstanden aus:</p><strong>Innehalten · Kap. 18 · „Ein Bruder existiert“</strong><p>Spuren gelegt: 2 von 5 Stellen</p><div className="branch-progress"><i /></div><button>Weitere Spuren legen ↗</button></section><section className="saved-info"><h2>Was gesichert wird</h2><ul><li>jede Änderung, automatisch</li><li>das Original bleibt immer erhalten</li><li>Zweige übernimmt nur du</li></ul><small>KI · automatisieren: sichert und markiert. Entscheiden: nur du.</small></section></aside></div>
+      </section>
+    </div>{notice && <div className="versions-toast">✓ {notice}</div>}
+  </main>
+}
+
+function Fundgrube({ volume, setVolume, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; onWritingRoom: () => void; onVersions: () => void }) {
   const [view, setView] = useState<FundgrubeView>('Übersicht')
   const [findingsState, setFindingsState] = useState<Record<string, 'new' | 'confirmed' | 'removed'>>({})
   const [threadStatus, setThreadStatus] = useState(() => Object.fromEntries(fundgrubeThreads.map(thread => [thread.id, thread.status])) as Record<string, string>)
@@ -122,7 +149,7 @@ function Fundgrube({ volume, setVolume, onWritingRoom }: { volume: string; setVo
     <header className="topbar">
       <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
       <div className="project-title"><span>Der Sommer der Könige</span><ChevronDown size={15} /></div>
-      <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link current">Fundgrube {newCount > 0 && <span className="new-dot">{newCount}</span>}</button><button className="nav-link">Versionen & Zweige</button></nav>
+      <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link current">Fundgrube {newCount > 0 && <span className="new-dot">{newCount}</span>}</button><button className="nav-link" onClick={onVersions}>Versionen & Zweige</button></nav>
       <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={event => setVolume(event.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
     </header>
     <div className="fundgrube-layout">
