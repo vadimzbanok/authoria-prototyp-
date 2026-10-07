@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, Lightbulb, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
-import { alternativeBranches, assumption, branches, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
+import { alternativeBranches, assumption, branches, chapterManuscripts, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
 
 type PanelState = 'input' | 'loading' | 'result' | 'empty' | 'boundary' | 'clues'
 type Feedback = { message: string; action: string } | null
@@ -9,6 +9,7 @@ type FundgrubeView = 'Übersicht' | 'Figuren' | 'Orte' | 'Offene Fäden' | 'Wide
 type ManuscriptSelection = { start: number; end: number; text: string }
 
 const initialSelectionStart = manuscript.paragraphs.slice(0, 2).join('').length
+const initialManuscriptSelection = { start: initialSelectionStart, end: initialSelectionStart + manuscript.paragraphs[2].length, text: manuscript.selection }
 
 function selectionParts(text: string, textStart: number, selection: ManuscriptSelection | null) {
   if (!selection || selection.end <= textStart || selection.start >= textStart + text.length) return text
@@ -42,8 +43,10 @@ export default function App() {
   const [selectedClue, setSelectedClue] = useState<number | null>(null)
   const [branchSaved, setBranchSaved] = useState(false)
   const [page, setPage] = useState<Page>('schreibraum')
-  const [manuscriptSelection, setManuscriptSelection] = useState<ManuscriptSelection | null>({ start: initialSelectionStart, end: initialSelectionStart + manuscript.paragraphs[2].length, text: manuscript.selection })
+  const [manuscriptSelection, setManuscriptSelection] = useState<ManuscriptSelection | null>(initialManuscriptSelection)
   const manuscriptRef = useRef<HTMLElement>(null)
+  const [activeChapter, setActiveChapter] = useState(18)
+  const currentManuscript = chapterManuscripts[activeChapter]
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -112,22 +115,22 @@ export default function App() {
         <aside className="sidebar">
           <div className="side-title"><span>MANUSKRIPT</span><button aria-label="Kapitel hinzufügen"><Plus size={17} /></button></div>
           <div className="book-title"><FileText size={16} /> Der Sommer der Könige</div>
-          <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} className={`chapter ${chapter.active ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>S. {chapter.page}</small></button>)}</div>
+          <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => { setActiveChapter(chapter.number); setManuscriptSelection(chapter.number === 18 ? initialManuscriptSelection : null); setPanel(null) }} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>S. {chapter.page}</small></button>)}</div>
           <div className="sidebar-bottom"><button><Search size={16} />Durchsuchen</button><button><CircleHelp size={16} />Hilfe & Feedback</button></div>
         </aside>
 
         <section className="editor" aria-label="Manuskript" onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
-          <div className="editor-meta"><span>Kapitel {manuscript.chapter}</span><span>·</span><span>Seite {manuscript.page}</span><span className="saved">Gespeichert</span></div>
+          <div className="editor-meta"><span>Kapitel {activeChapter}</span><span>·</span><span>Seite {currentManuscript.page}</span><span className="saved">Gespeichert</span></div>
           <article className="manuscript" ref={manuscriptRef} onMouseUp={captureSelection} onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
-            <h1>{manuscript.title}</h1>
-            {(() => { let offset = 0; return manuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; return <div key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}</p>{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
+            <h1>{currentManuscript.title}</h1>
+            {(() => { let offset = 0; return currentManuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; return <div key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}</p>{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
           </article>
           {branchSaved && <div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt</div>}
           <button className="pause-button" onClick={openPanel}><span className="pause-icon">Ⅱ</span> Innehalten</button>
         </section>
 
         {panel && <aside className="ai-panel" aria-label="Innehalten-Panel">
-          <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'} <span>· Kap. 18</span></h2></div><button className="icon-button" onClick={() => setPanel(null)} aria-label="Panel schließen"><X size={20} /></button></div>
+          <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'} <span>· Kap. {activeChapter}</span></h2></div><button className="icon-button" onClick={() => setPanel(null)} aria-label="Panel schließen"><X size={20} /></button></div>
           {panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
           {panel === 'input' && <InputPanel selectionText={manuscriptSelection?.text ?? 'Keine Stelle markiert'} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} onStart={() => setPanel('loading')} onBoundary={() => setPanel('boundary')} />}
           {panel === 'loading' && <LoadingPanel onCancel={() => setPanel('input')} />}

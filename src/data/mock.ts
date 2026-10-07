@@ -20,6 +20,40 @@ export const manuscript = {
   selection: 'Der König war in der Nacht gestorben. Prinz Edrik war seit Jahren tot. Und nun lag die Krone auf dem dunklen Samt, zu groß für jedes der Gesichter im Raum.',
 }
 
+export const chapterManuscripts: Record<number, { title: string; page: number; paragraphs: string[] }> = {
+  15: {
+    title: 'Der rote Schwur',
+    page: 249,
+    paragraphs: [
+      'Der Regen hatte die Fahnen über dem Hof schwer gemacht. Teo kniete auf den nassen Steinen der Kapelle, das Schwert quer über den Knien, und sprach die alten Worte, die sein Vater vor ihm gesprochen hatte.',
+      '„Ich schütze das Blut des Königs“, sagte er, „solange es fließt.“',
+      'Mira stand im Schatten der Säulen. Als er aufsah, begegneten sich ihre Blicke, und er bemerkte zum ersten Mal, wie grün ihre Augen im Kerzenlicht waren. Sie wandte sich ab, bevor er etwas sagen konnte.',
+      'Später würde er sich fragen, warum sie bei dem Wort „Blut“ so still geworden war.',
+    ],
+  },
+  16: {
+    title: 'Unter den Zinnen',
+    page: 267,
+    paragraphs: [
+      'Vom Turmzimmer aus sah man über die ganze Stadt, bis zu den Hügeln, hinter denen Velmor lag. Teo kam oft hierher, wenn der Palast zu laut wurde.',
+      'An diesem Abend fand er auf dem Fenstersims einen versiegelten Brief. Das Wachs trug kein Wappen, das er kannte, nur einen zweiten, kleineren Abdruck neben dem königlichen: das andere Siegel, von dem die Gesandten gesprochen hatten.',
+      'Er drehte den Brief lange in den Händen. Dann legte er ihn zurück, genau so, wie er ihn gefunden hatte.',
+      'Unten im Hof lachte jemand. Es klang fremd in dieser Nacht.',
+    ],
+  },
+  17: {
+    title: 'Das letzte Gelöbnis',
+    page: 286,
+    paragraphs: [
+      'Der König ließ den Rat in den Königssaal rufen, obwohl er kaum noch stehen konnte. Mira stützte ihn, als er die Stufen zum Thron hinaufging.',
+      '„Ich gelobe“, sagte er, „dass Arven nicht ohne Erben bleiben wird.“',
+      'Niemand wagte zu fragen, wen er meinte. Prinz Edrik lag seit Jahren unter dem Stein im Nordhof, und alle im Saal wussten es.',
+      'Am Ende der Halle wartete ein Gesandter aus Velmor. Er verneigte sich tief, doch sein Blick blieb auf Mira gerichtet, als kenne er sie von früher.',
+    ],
+  },
+  18: { title: manuscript.title, page: manuscript.page, paragraphs: manuscript.paragraphs },
+}
+
 export const assumption = 'Dir fehlt ein Thronfolger, weil Prinz Edrik in Kap. 4 gestorben ist.'
 
 export const findings = [
