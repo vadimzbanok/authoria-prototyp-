@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, Lightbulb, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
 import { alternativeBranches, assumption, branches, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
 
@@ -6,6 +6,16 @@ type PanelState = 'input' | 'loading' | 'result' | 'empty' | 'boundary' | 'clues
 type Feedback = { message: string; action: string } | null
 type Page = 'schreibraum' | 'fundgrube' | 'versionen'
 type FundgrubeView = 'Übersicht' | 'Figuren' | 'Orte' | 'Offene Fäden' | 'Widersprüche'
+type ManuscriptSelection = { start: number; end: number; text: string }
+
+const initialSelectionStart = manuscript.paragraphs.slice(0, 2).join('').length
+
+function selectionParts(text: string, textStart: number, selection: ManuscriptSelection | null) {
+  if (!selection || selection.end <= textStart || selection.start >= textStart + text.length) return text
+  const start = Math.max(0, selection.start - textStart)
+  const end = Math.min(text.length, selection.end - textStart)
+  return <>{text.slice(0, start)}<mark className="highlighted">{text.slice(start, end)}</mark>{text.slice(end)}</>
+}
 
 const panelLabels: Record<PanelState, string> = {
   input: 'Eingabe', loading: 'Lädt', result: 'Ergebnis', empty: 'Nichts gefunden', boundary: 'Grenzfall', clues: 'Spuren legen',
@@ -32,6 +42,8 @@ export default function App() {
   const [selectedClue, setSelectedClue] = useState<number | null>(null)
   const [branchSaved, setBranchSaved] = useState(false)
   const [page, setPage] = useState<Page>('schreibraum')
+  const [manuscriptSelection, setManuscriptSelection] = useState<ManuscriptSelection | null>({ start: initialSelectionStart, end: initialSelectionStart + manuscript.paragraphs[2].length, text: manuscript.selection })
+  const manuscriptRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -39,6 +51,7 @@ export default function App() {
         const states: PanelState[] = ['input', 'loading', 'result', 'empty', 'boundary', 'clues']
         setPanel(current => states[(states.indexOf(current ?? 'input') + 1) % states.length])
       }
+      if (event.key === 'Escape') setManuscriptSelection(null)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -56,6 +69,27 @@ export default function App() {
   const exploreBranch = (branch: Branch) => {
     if (branch.id === 'brother') { setPanel('clues'); setFeedback(null) }
     else act(`„${branch.title}“ bleibt als Möglichkeit sichtbar.`, 'Gemerkte Möglichkeit')
+  }
+  const captureSelection = () => {
+    const root = manuscriptRef.current
+    const selection = window.getSelection()
+    if (!root || !selection || selection.rangeCount === 0 || selection.isCollapsed || !selection.anchorNode || !selection.focusNode || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return
+    const range = selection.getRangeAt(0)
+    const paragraphs = Array.from(root.querySelectorAll<HTMLElement>('[data-manuscript-paragraph]'))
+    const textPosition = (node: Node, offset: number) => {
+      const paragraphIndex = paragraphs.findIndex(paragraph => paragraph.contains(node))
+      if (paragraphIndex === -1) return null
+      const withinParagraph = document.createRange()
+      withinParagraph.selectNodeContents(paragraphs[paragraphIndex])
+      withinParagraph.setEnd(node, offset)
+      return paragraphs.slice(0, paragraphIndex).reduce((total, paragraph) => total + (paragraph.textContent?.length ?? 0), 0) + withinParagraph.toString().length
+    }
+    const start = textPosition(range.startContainer, range.startOffset)
+    const end = textPosition(range.endContainer, range.endOffset)
+    const text = range.toString().trim()
+    if (!text || start === null || end === null) return
+    setManuscriptSelection({ start, end, text })
+    window.setTimeout(() => selection.removeAllRanges(), 0)
   }
 
   if (page === 'fundgrube') {
@@ -82,12 +116,11 @@ export default function App() {
           <div className="sidebar-bottom"><button><Search size={16} />Durchsuchen</button><button><CircleHelp size={16} />Hilfe & Feedback</button></div>
         </aside>
 
-        <section className="editor" aria-label="Manuskript">
+        <section className="editor" aria-label="Manuskript" onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
           <div className="editor-meta"><span>Kapitel {manuscript.chapter}</span><span>·</span><span>Seite {manuscript.page}</span><span className="saved">Gespeichert</span></div>
-          <article className="manuscript">
+          <article className="manuscript" ref={manuscriptRef} onMouseUp={captureSelection} onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
             <h1>{manuscript.title}</h1>
-            {manuscript.paragraphs.map((paragraph, index) => <p key={paragraph} className={index === 2 ? 'highlighted' : ''}>{paragraph}</p>)}
-            <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>
+            {(() => { let offset = 0; return manuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; return <div key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}</p>{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
           </article>
           {branchSaved && <div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt</div>}
           <button className="pause-button" onClick={openPanel}><span className="pause-icon">Ⅱ</span> Innehalten</button>
@@ -96,7 +129,7 @@ export default function App() {
         {panel && <aside className="ai-panel" aria-label="Innehalten-Panel">
           <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'} <span>· Kap. 18</span></h2></div><button className="icon-button" onClick={() => setPanel(null)} aria-label="Panel schließen"><X size={20} /></button></div>
           {panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
-          {panel === 'input' && <InputPanel scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} onStart={() => setPanel('loading')} onBoundary={() => setPanel('boundary')} />}
+          {panel === 'input' && <InputPanel selectionText={manuscriptSelection?.text ?? 'Keine Stelle markiert'} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} onStart={() => setPanel('loading')} onBoundary={() => setPanel('boundary')} />}
           {panel === 'loading' && <LoadingPanel onCancel={() => setPanel('input')} />}
           {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} />}
           {panel === 'empty' && <EmptyPanel onClose={() => setPanel(null)} onExpand={() => { setScope('Ganzes Manuskript'); setPanel('loading') }} />}
@@ -180,8 +213,8 @@ function FundgrubeThreads({ statuses, onCycle }: { statuses: Record<string, stri
 
 function FundgrubeContradiction({ onDismiss }: { onDismiss: () => void }) { return <section className="contradiction-card"><div className="contradiction-title"><h2>Möglicher Widerspruch</h2><span><Sparkles size={11} /> KI-Hinweis</span></div><h3>{fundgrubeContradiction.title}</h3><p>Vielleicht Absicht. Du entscheidest.</p><button className="confirm">Zu den Stellen</button><button onClick={onDismiss}>Ist Absicht</button></section> }
 
-function InputPanel(props: { scope: string; setScope: (value: string) => void; intent: string; setIntent: (value: string) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; onStart: () => void; onBoundary: () => void }) {
-  return <div className="panel-content input-panel"><div className="selected-text"><span>MARKIERTE STELLE</span><p>„{manuscript.selection}“</p></div><section><h3>Wobei soll ich schauen?</h3><div className="chips">{['Kap. 1–18', 'nur dieses Kapitel', 'nur Figur: Mira'].map(value => <Chip key={value} active={props.scope === value} onClick={() => props.setScope(value)}>{value}</Chip>)}</div></section><section><h3>Was brauchst du gerade?</h3><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => props.setIntent(value)}>{value}</Chip>)}</div></section><section className="assumption"><div className="assumption-title"><span>Ich verstehe …</span><button onClick={() => props.setEditing(!props.editing)}>{props.editing ? 'Fertig' : 'Ändern'}</button></div>{props.editing ? <textarea value={props.assumptionText} onChange={event => props.setAssumptionText(event.target.value)} /> : <p>{props.assumptionText}</p>}</section><label className="optional-question">Eigene Frage stellen …<input placeholder="Optional" onChange={event => { if (event.target.value.toLowerCase().includes('schreib')) props.onBoundary() }} /></label><button className="primary-button" onClick={props.onStart}><Sparkles size={17} />Innehalten</button></div>
+function InputPanel(props: { selectionText: string; scope: string; setScope: (value: string) => void; intent: string; setIntent: (value: string) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; onStart: () => void; onBoundary: () => void }) {
+  return <div className="panel-content input-panel"><div className="selected-text"><span>MARKIERTE STELLE</span><p>„{props.selectionText}“</p></div><section><h3>Wobei soll ich schauen?</h3><div className="chips">{['Kap. 1–18', 'nur dieses Kapitel', 'nur Figur: Mira'].map(value => <Chip key={value} active={props.scope === value} onClick={() => props.setScope(value)}>{value}</Chip>)}</div></section><section><h3>Was brauchst du gerade?</h3><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => props.setIntent(value)}>{value}</Chip>)}</div></section><section className="assumption"><div className="assumption-title"><span>Ich verstehe …</span><button onClick={() => props.setEditing(!props.editing)}>{props.editing ? 'Fertig' : 'Ändern'}</button></div>{props.editing ? <textarea value={props.assumptionText} onChange={event => props.setAssumptionText(event.target.value)} /> : <p>{props.assumptionText}</p>}</section><label className="optional-question">Eigene Frage stellen …<input placeholder="Optional" onChange={event => { if (event.target.value.toLowerCase().includes('schreib')) props.onBoundary() }} /></label><button className="primary-button" onClick={props.onStart}><Sparkles size={17} />Innehalten</button></div>
 }
 
 function LoadingPanel({ onCancel }: { onCancel: () => void }) { return <div className="panel-content loading"><div className="loading-orbit"><span></span><Sparkles size={23} /></div><h3>Ich sehe mir deine Spuren an</h3><p>Ich prüfe nur den gewählten Bereich und ändere nichts an deinem Text.</p><ul>{loadingSteps.map((step, index) => <li key={step} className={index < 2 ? 'done' : 'working'}><span>{index < 2 ? '✓' : '…'}</span>{step}</li>)}</ul><button className="secondary-button" onClick={onCancel}>Abbrechen</button></div> }
