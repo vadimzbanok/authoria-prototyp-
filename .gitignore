@@ -1,0 +1,14 @@
+# Dependencies and generated output
+node_modules/
+dist/
+
+# Local tooling and environment files
+.vite/
+.DS_Store
+*.local
+.env
+.env.*
+!.env.example
+
+# TypeScript build cache
+*.tsbuildinfo
