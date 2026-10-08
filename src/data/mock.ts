@@ -112,11 +112,11 @@ export const alternativeBranches: Branch[] = [
 ]
 
 export const clues = [
-  { chapter: 2, page: 31, excerpt: 'Der Stallmeister senkte den Blick, als Edriks Name fiel.', reason: 'Eine ausweichende Reaktion kann später als Wissen über die Familie lesbar werden.' },
-  { chapter: 4, page: 61, excerpt: 'Die Nachricht von Edriks Tod erreichte Arven ohne Siegel.', reason: 'Das fehlende Siegel lässt Raum für eine ungeklärte Geschichte.' },
-  { chapter: 7, page: 108, excerpt: 'Mira faltete den Stammbaum, bevor Teo die letzte Zeile sah.', reason: 'Miras Schweigen kann mit der Thronfolge verbunden sein, ohne sie zu erklären.' },
-  { chapter: 11, page: 174, excerpt: 'Im Archiv fehlte eine Seite aus dem Register der Könige.', reason: 'Das fehlende Register kann einen späteren Hinweis glaubwürdig verankern.' },
-  { chapter: 15, page: 249, excerpt: 'Der König nannte einen Namen, den niemand im Saal kannte.', reason: 'Der unvollständige Moment schafft einen natürlichen Anknüpfungspunkt.' },
+  { chapter: 2, page: 31, excerpt: 'Der Stallmeister senkte den Blick, als Edriks Name fiel.', context: 'Im Stall roch es nach Heu und kaltem Eisen. Der junge Edrik wollte sein Pferd selbst satteln, wie jeden Morgen. Der Stallmeister senkte den Blick, als Edriks Name fiel. Draußen begann es zu schneien.', reason: 'Eine ausweichende Reaktion kann später als Wissen über die Familie lesbar werden.' },
+  { chapter: 4, page: 61, excerpt: 'Die Nachricht von Edriks Tod erreichte Arven ohne Siegel.', context: 'Der Bote wartete schweigend im Hof. Die Nachricht von Edriks Tod erreichte Arven ohne Siegel. Niemand fragte, wer sie geschickt hatte.', reason: 'Das fehlende Siegel lässt Raum für eine ungeklärte Geschichte.' },
+  { chapter: 7, page: 108, excerpt: 'Mira faltete den Stammbaum, bevor Teo die letzte Zeile sah.', context: 'Das Feuer war fast heruntergebrannt. Mira faltete den Stammbaum, bevor Teo die letzte Zeile sah. Sie sagte, der Staub habe ihr in den Augen gebrannt.', reason: 'Miras Schweigen kann mit der Thronfolge verbunden sein, ohne sie zu erklären.' },
+  { chapter: 11, page: 174, excerpt: 'Im Archiv fehlte eine Seite aus dem Register der Könige.', context: 'Zwischen den schweren Bänden lag ein Streifen Pergament. Im Archiv fehlte eine Seite aus dem Register der Könige. Der Bibliothekar sagte, sie sei schon lange verloren.', reason: 'Das fehlende Register kann einen späteren Hinweis glaubwürdig verankern.' },
+  { chapter: 15, page: 249, excerpt: 'Der König nannte einen Namen, den niemand im Saal kannte.', context: 'Der Regen drückte gegen die Fenster des Saals. Der König nannte einen Namen, den niemand im Saal kannte. Teo sah, wie Mira die Hände schloss.', reason: 'Der unvollständige Moment schafft einen natürlichen Anknüpfungspunkt.' },
 ]
 
 export const loadingSteps = [

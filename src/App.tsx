@@ -11,6 +11,7 @@ type FundgrubeFilter = 'all' | 'new' | 'confirmed'
 type ManuscriptSelection = { start: number; end: number; text: string }
 type SaveState = 'saving' | 'saved'
 type PrivateNote = { id: string; chapter: number; question: string; text: string; selection: ManuscriptSelection }
+type ClueStatus = { status: 'saved' | 'skipped'; text: string }
 
 const initialSelectionStart = manuscript.paragraphs.slice(0, 2).join('').length
 const initialManuscriptSelection = { start: initialSelectionStart, end: initialSelectionStart + manuscript.paragraphs[2].length, text: manuscript.selection }
@@ -93,12 +94,14 @@ export default function App() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [panelSelection, setPanelSelection] = useState<ManuscriptSelection | null>(null)
   const [panelChapter, setPanelChapter] = useState<number | null>(null)
+  const [selectionRequired, setSelectionRequired] = useState(false)
   const [showAlternatives, setShowAlternatives] = useState(false)
   const [feedback, setFeedback] = useState<Feedback>(null)
   const [volume, setVolume] = useState('leise')
   const [selectedLens, setSelectedLens] = useState('neutral')
   const [selectedClue, setSelectedClue] = useState<number | null>(null)
   const [branchSaved, setBranchSaved] = useState(false)
+  const [clueStates, setClueStates] = useState<Record<number, ClueStatus>>({})
   const [findingsState, setFindingsState] = useState<Record<string, 'new' | 'confirmed' | 'removed'>>({})
   const [hasFundgrubeUpdates, setHasFundgrubeUpdates] = useState(false)
   const [threadStatus, setThreadStatus] = useState(() => Object.fromEntries(fundgrubeThreads.map(thread => [thread.id, thread.status])) as Record<string, string>)
@@ -163,7 +166,7 @@ export default function App() {
     return () => window.clearTimeout(timeout)
   }, [intent, scope])
 
-  const openPanel = () => { setPanel(current => current ?? 'input'); setFeedback(null) }
+  const openPanel = () => { setPanel(current => current ?? 'input'); setFeedback(null); setSelectionRequired(!manuscriptSelection) }
   const resetPanel = () => {
     setPanel('input')
     setFeedback(null)
@@ -190,6 +193,20 @@ export default function App() {
     if (branch === activeBranch) return
     setActiveBranch(branch)
     markImportantChange()
+  }
+  const closePanel = () => {
+    if (panel === 'clues') setActiveBranch('main')
+    setPanel(null)
+  }
+  const navigateFromWritingRoom = (destination: Exclude<Page, 'schreibraum'>) => {
+    if (panel === 'clues') {
+      setActiveBranch('main')
+    }
+    setPage(destination)
+  }
+  const returnToWritingRoom = () => {
+    if (panel === 'clues') setActiveBranch('brother')
+    setPage('schreibraum')
   }
   const updatePanelWidth = (nextWidth: number) => {
     const maxWidth = Math.min(680, Math.max(380, window.innerWidth - 620))
@@ -230,18 +247,22 @@ export default function App() {
     const range = selection.getRangeAt(0)
     const paragraphs = Array.from(root.querySelectorAll<HTMLElement>('[data-manuscript-paragraph]'))
     const textPosition = (node: Node, offset: number) => {
-      const paragraphIndex = paragraphs.findIndex(paragraph => paragraph.contains(node))
-      if (paragraphIndex === -1) return null
-      const withinParagraph = document.createRange()
-      withinParagraph.selectNodeContents(paragraphs[paragraphIndex])
-      withinParagraph.setEnd(node, offset)
-      return paragraphs.slice(0, paragraphIndex).reduce((total, paragraph) => total + (paragraph.textContent?.length ?? 0), 0) + withinParagraph.toString().length
+      if (!paragraphs.length) return null
+      const fromFirstParagraph = document.createRange()
+      fromFirstParagraph.setStartBefore(paragraphs[0])
+      try {
+        fromFirstParagraph.setEnd(node, offset)
+        return fromFirstParagraph.toString().length
+      } catch {
+        return null
+      }
     }
     const start = textPosition(range.startContainer, range.startOffset)
     const end = textPosition(range.endContainer, range.endOffset)
     const text = range.toString().trim()
     if (!text || start === null || end === null) return
     setManuscriptSelection({ start, end, text })
+    setSelectionRequired(false)
     window.setTimeout(() => selection.removeAllRanges(), 0)
   }
   const savePrivateNote = (question: string, text: string) => {
@@ -270,10 +291,10 @@ export default function App() {
   }
 
   if (page === 'fundgrube') {
-    return <Fundgrube volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} findingsState={findingsState} setFindingsState={setFindingsState} threadStatus={threadStatus} setThreadStatus={setThreadStatus} notes={privateNotes} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onOpenNote={openPrivateNote} onWritingRoom={() => setPage('schreibraum')} onVersions={() => setPage('versionen')} />
+    return <Fundgrube volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} findingsState={findingsState} setFindingsState={setFindingsState} threadStatus={threadStatus} setThreadStatus={setThreadStatus} notes={privateNotes} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onOpenNote={openPrivateNote} onWritingRoom={returnToWritingRoom} onVersions={() => setPage('versionen')} />
   }
   if (page === 'versionen') {
-    return <Versions volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onWritingRoom={() => setPage('schreibraum')} onFundgrube={() => setPage('fundgrube')} />
+    return <Versions volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} activeBranch={activeBranch} brotherCreated={brotherCreated} clueStates={clueStates} setActiveBranch={changeBranch} onSave={markImportantChange} onWritingRoom={returnToWritingRoom} onFundgrube={() => setPage('fundgrube')} />
   }
 
   return (
@@ -281,7 +302,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
         <ProjectSwitcher /><BranchSwitcher activeBranch={activeBranch} brotherCreated={brotherCreated} onChange={changeBranch} />
-        <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link" onClick={() => setPage('fundgrube')}>Fundgrube {fundgrubeBadge > 0 && <span className="new-dot">{fundgrubeBadge}</span>}</button><button className="nav-link" onClick={() => setPage('versionen')}>Versionen & Zweige</button></nav>
+        <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link" onClick={() => navigateFromWritingRoom('fundgrube')}>Fundgrube {fundgrubeBadge > 0 && <span className="new-dot">{fundgrubeBadge}</span>}</button><button className="nav-link" onClick={() => navigateFromWritingRoom('versionen')}>Versionen & Zweige</button></nav>
         <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={e => setVolume(e.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
       </header>
 
@@ -289,7 +310,7 @@ export default function App() {
         <aside className="sidebar">
           <div className="side-title"><span>MANUSKRIPT</span><button aria-label="Kapitel hinzufügen"><Plus size={17} /></button></div>
           <div className="book-title"><FileText size={16} /> Der Sommer der Könige</div>
-          <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => { setActiveChapter(chapter.number); setManuscriptSelection(chapter.number === 18 ? initialManuscriptSelection : null); setPanel(null) }} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>S. {chapter.page}</small></button>)}</div>
+          <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => { setActiveChapter(chapter.number); setManuscriptSelection(chapter.number === 18 ? initialManuscriptSelection : null); closePanel() }} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>S. {chapter.page}</small></button>)}</div>
           <div className="sidebar-bottom"><button><Search size={16} />Durchsuchen</button><button><CircleHelp size={16} />Hilfe & Feedback</button></div>
         </aside>
 
@@ -305,14 +326,14 @@ export default function App() {
         </section>
 
         {panel && <aside className="ai-panel" aria-label="Innehalten-Panel"><button className="panel-resizer" aria-label="Breite des Innehalten-Panels anpassen" onPointerDown={event => { event.preventDefault(); startPanelResize(event.clientX) }} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); updatePanelWidth(panelWidth + (event.key === 'ArrowLeft' ? 24 : -24)) } }} />
-          <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'}</h2></div><button className="icon-button" onClick={() => setPanel(null)} aria-label="Panel schließen"><X size={20} /></button></div>
+          <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'}</h2></div><button className="icon-button" onClick={closePanel} aria-label="Panel schließen"><X size={20} /></button></div>
           {panel !== 'input' && panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
-          {panel === 'input' && <InputPanel selectionText={selectedText} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} draft={assumptionDraft} setDraft={setAssumptionDraft} isUnderstandingLoading={isUnderstandingLoading} questionDraft={questionDraft} setQuestionDraft={setQuestionDraft} addedQuestion={addedQuestion} setAddedQuestion={setAddedQuestion} onSave={markImportantChange} onStart={() => { setPanelSelection(manuscriptSelection); setPanelChapter(activeChapter); setPanel('loading') }} />}
+          {panel === 'input' && <InputPanel selectionText={selectedText} selectionRequired={selectionRequired} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} draft={assumptionDraft} setDraft={setAssumptionDraft} isUnderstandingLoading={isUnderstandingLoading} questionDraft={questionDraft} setQuestionDraft={setQuestionDraft} addedQuestion={addedQuestion} setAddedQuestion={setAddedQuestion} onSave={markImportantChange} onStart={() => { if (!manuscriptSelection) { setSelectionRequired(true); return }; setPanelSelection(manuscriptSelection); setPanelChapter(activeChapter); setPanel('loading') }} />}
           {panel === 'loading' && <LoadingPanel onCancel={() => setPanel('input')} />}
-          {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} notes={privateNotes} chapter={activeChapter} onSaveNote={savePrivateNote} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} onFundgrube={() => { setPanel(null); setPage('fundgrube') }} onOpenChapter={openSourceChapter} />}
+          {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} notes={privateNotes} chapter={activeChapter} onSaveNote={savePrivateNote} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} onFundgrube={() => setPage('fundgrube')} onOpenChapter={openSourceChapter} />}
           {panel === 'empty' && <EmptyPanel onClose={() => setPanel(null)} onExpand={() => { setScope('Ganzes Manuskript'); setPanel('loading') }} />}
           {panel === 'boundary' && <BoundaryPanel onQuestions={() => { setIntent('Was habe ich vergessen?'); setPanel('loading') }} onPerspective={() => { setIntent('Perspektive wechseln'); setPanel('input') }} />}
-          {panel === 'clues' && <CluesPanel selected={selectedClue} setSelected={setSelectedClue} onSave={() => { setBranchSaved(true); markImportantChange(); setFeedback({ message: 'Der Zweig ist gesichert. Das Original wurde nicht verändert.', action: 'Zweig „Bruder“' }); setPanel(null) }} />}
+          {panel === 'clues' && <CluesPanel selected={selectedClue} setSelected={setSelectedClue} clueStates={clueStates} setClueStates={setClueStates} onChange={markImportantChange} onSave={() => { setBranchSaved(true); setActiveBranch('main'); markImportantChange(); setFeedback({ message: 'Zweig „Bruder“ gesichert · Original bleibt', action: 'Zweig „Bruder“' }); setPanel(null) }} />}
           {panel !== 'clues' && <div className="panel-footer"><button onClick={undo} disabled={!feedback && panel !== 'result'}><RotateCcw size={15} />Rückgängig</button><button onClick={resetPanel}>Panel zurücksetzen</button><button onClick={() => setPanel(null)}>Panel schließen</button></div>}
           {feedback && <div className="toast"><span>✓</span><div><strong>{feedback.action}</strong><p>{feedback.message}</p></div><button onClick={undo} aria-label="Rückmeldung schließen"><X size={15} /></button></div>}
         </aside>}
@@ -321,10 +342,13 @@ export default function App() {
   )
 }
 
-function Versions({ volume, setVolume, notificationCount, activeBranch, brotherCreated, setActiveBranch, onSave, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; activeBranch: 'main' | 'brother'; brotherCreated: boolean; setActiveBranch: (branch: 'main' | 'brother') => void; onSave: () => void; onWritingRoom: () => void; onFundgrube: () => void }) {
+function Versions({ volume, setVolume, notificationCount, activeBranch, brotherCreated, clueStates, setActiveBranch, onSave, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; activeBranch: 'main' | 'brother'; brotherCreated: boolean; clueStates: Record<number, ClueStatus>; setActiveBranch: (branch: 'main' | 'brother') => void; onSave: () => void; onWritingRoom: () => void; onFundgrube: () => void }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const active = versionsBranches.find(branch => branch.id === activeBranch) ?? versionsBranches[0]
+  const savedClueIndex = clues.findIndex((_, index) => clueStates[index]?.status === 'saved')
+  const savedClue = savedClueIndex >= 0 ? clues[savedClueIndex] : null
+  const savedClueText = savedClueIndex >= 0 ? clueStates[savedClueIndex].text : ''
   const notify = (message: string) => { onSave(); setNotice(message); window.setTimeout(() => setNotice(null), 2600) }
   return <main className="app versions-app">
     <header className="topbar">
@@ -336,7 +360,7 @@ function Versions({ volume, setVolume, notificationCount, activeBranch, brotherC
     <div className="versions-layout">
       <aside className="versions-sidebar"><div className="side-title"><span>ZWEIGE</span></div>{versionsBranches.map(branch => <button key={branch.id} className={activeBranch === branch.id ? 'active' : ''} onClick={() => { if (branch.id === 'main' || (branch.id === 'brother' && brotherCreated)) setActiveBranch(branch.id) }}><i className={branch.id === 'brother' ? 'green' : ''} /><span><strong>{branch.name}</strong><small>{branch.detail}</small></span></button>)}<div className="versions-note">Nichts geht verloren. Jede Änderung wird automatisch gesichert, das Original bleibt immer erhalten.</div></aside>
       <section className="versions-content"><div className="versions-heading"><div className="eyebrow author-label">NICHTS GEHT VERLOREN</div><h1>Versionen & Zweige</h1><p>Probier Ideen aus, ohne etwas zu riskieren. {activeBranch === 'brother' ? 'Der Zweig „Bruder“ ist gerade aktiv.' : 'Die Hauptlinie ist gerade aktiv.'}</p></div>
-        <section className="comparison-card"><div className="comparison-title"><strong>Zweig-Vergleich · Kap. 2 „Zwei Brüder im Schnee“</strong><span><Sparkles size={11} /> Unterschiede markiert</span></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte.</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte. <mark>„Wir waren zwei“, sagte er einmal, und schwieg danach so lange, dass niemand nachzufragen wagte.</mark></p><small>+1 Satz · von dir geschrieben</small></article></div><div className="compare-actions"><button className="author-primary" onClick={() => notify('In die Hauptlinie übernommen')}>Zweig übernehmen</button><button>Im Zweig weiterschreiben</button><button onClick={() => setConfirmDiscard(true)}>Zweig verwerfen</button></div>{confirmDiscard && <div className="discard-confirm"><span>Wirklich verwerfen? Das Original bleibt erhalten.</span><button onClick={() => { setConfirmDiscard(false); notify('Zweig verworfen') }}>Verwerfen</button><button onClick={() => setConfirmDiscard(false)}>Abbrechen</button></div>}</section>
+        <section className="comparison-card"><div className="comparison-title"><strong>Zweig-Vergleich · {savedClue ? `Kap. ${savedClue.chapter}` : 'Kap. 2 „Zwei Brüder im Schnee“'}</strong><span><Sparkles size={11} /> Unterschiede markiert</span></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>{savedClue ? savedClue.context : 'Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte.'}</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label>{savedClue ? <><p>{savedClue.context} <mark className="author-insert">{savedClueText}</mark></p><small>+1 Satz · von dir geschrieben</small></> : <><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte. <mark>„Wir waren zwei“, sagte er einmal, und schwieg danach so lange, dass niemand nachzufragen wagte.</mark></p><small>+1 Satz · von dir geschrieben</small></>}</article></div><div className="compare-actions"><button className="author-primary" onClick={() => notify('In die Hauptlinie übernommen')}>Zweig übernehmen</button><button>Im Zweig weiterschreiben</button><button onClick={() => setConfirmDiscard(true)}>Zweig verwerfen</button></div>{confirmDiscard && <div className="discard-confirm"><span>Wirklich verwerfen? Das Original bleibt erhalten.</span><button onClick={() => { setConfirmDiscard(false); notify('Zweig verworfen') }}>Verwerfen</button><button onClick={() => setConfirmDiscard(false)}>Abbrechen</button></div>}</section>
         <div className="versions-columns"><section className="history"><div className="history-title"><h2>Verlauf</h2><span>automatisch gesichert</span></div><div className="history-card">{versionHistory.map(item => <article key={item.title}><i className={item.tone} /><div><h3>{item.title}</h3><p>{item.detail}</p></div><span className={item.tone === 'author' || item.tone === 'branch' ? 'branch-badge' : 'main-badge'}>{item.branch}</span><button onClick={() => notify('Version wiederhergestellt')}>Wiederherstellen</button></article>)}</div></section><aside><section className="branch-summary"><h2>{active.name}</h2><p>Entstanden aus:</p><strong>Innehalten · Kap. 18 · „Ein Bruder existiert“</strong><p>Spuren gelegt: 2 von 5 Stellen</p><div className="branch-progress"><i /></div><button>Weitere Spuren legen ↗</button></section><section className="saved-info"><h2>Was gesichert wird</h2><ul><li>jede Änderung, automatisch</li><li>das Original bleibt immer erhalten</li><li>Zweige übernimmt nur du</li></ul><small>KI · automatisieren: sichert und markiert. Entscheiden: nur du.</small></section></aside></div>
       </section>
     </div>{notice && <div className="versions-toast">✓ {notice}</div>}
@@ -393,7 +417,7 @@ function NotesView({ notes, onOpenNote }: { notes: PrivateNote[]; onOpenNote: (n
   return <section className="notes-view"><p className="notes-intro">Deine Gedanken bleiben privat und verändern dein Manuskript nicht.</p>{notes.length ? <div className="notes-list">{notes.map(note => <article key={note.id}><small>Kap. {note.chapter}</small><h2>{note.question}</h2><p>{note.text}</p><button onClick={() => onOpenNote(note)}>Zur Stelle <ArrowLeft className="arrow-right" size={13} /></button></article>)}</div> : <div className="notes-empty">Noch keine Notizen. Antworte im Innehalten-Panel auf eine Frage an dich.</div>}</section>
 }
 
-function InputPanel(props: { selectionText: string; figureNames: string[]; scope: string; setScope: (value: string) => void; intent: string | null; setIntent: (value: string | null) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; draft: string; setDraft: (value: string) => void; isUnderstandingLoading: boolean; questionDraft: string; setQuestionDraft: (value: string) => void; addedQuestion: string | null; setAddedQuestion: (value: string | null) => void; onSave: () => void; onStart: () => void }) {
+function InputPanel(props: { selectionText: string; selectionRequired: boolean; figureNames: string[]; scope: string; setScope: (value: string) => void; intent: string | null; setIntent: (value: string | null) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; draft: string; setDraft: (value: string) => void; isUnderstandingLoading: boolean; questionDraft: string; setQuestionDraft: (value: string) => void; addedQuestion: string | null; setAddedQuestion: (value: string | null) => void; onSave: () => void; onStart: () => void }) {
   const intentHelp: Record<string, string> = {
     'Ich stecke fest': 'Ich zeige dir Möglichkeiten, wie es weitergehen könnte.',
     'Was habe ich vergessen?': 'Ich suche offene Fäden und vergessene Figuren.',
@@ -408,11 +432,11 @@ function InputPanel(props: { selectionText: string; figureNames: string[]; scope
     props.onSave()
   }
   return <div className="panel-content input-panel">
-    <section className="selected-text"><div className="input-section-heading"><i>1</i><h3>Deine Stelle</h3></div><p>{props.selectionText ? `„${props.selectionText}“` : 'Markiere eine Stelle im Text.'}</p></section>
+    <section className={`selected-text ${props.selectionRequired && !props.selectionText ? 'selection-required' : ''}`}><div className="input-section-heading"><i>1</i><h3>Deine Stelle</h3></div><p>{props.selectionText ? `„${props.selectionText}“` : props.selectionRequired ? 'Markiere zuerst eine Stelle im Manuskript, dann kann ich dir helfen.' : 'Markiere eine Stelle im Text.'}</p></section>
     <section><div className="input-section-heading"><i>2</i><h3>Was brauchst du?</h3></div><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => { if (value !== props.intent) props.setIntent(value) }}>{value}</Chip>)}</div><p className="input-hint">{props.intent ? intentHelp[props.intent] : 'Wähle zuerst, wobei ich dir helfen soll.'}</p></section>
     <section><div className="input-section-heading"><i>3</i><h3>Wo soll ich suchen?</h3></div><div className="chips">{scopes.map(value => <Chip key={value} active={props.scope === value} onClick={() => { if (value !== props.scope) props.setScope(value) }}>{value}</Chip>)}</div><p className="input-hint">Figuren-Chips kommen aus deiner markierten Stelle.</p></section>
     {props.intent && <section><div className="input-section-heading"><i>4</i><h3>So verstehe ich dich</h3></div>{props.isUnderstandingLoading ? <div className="understanding-loading" aria-live="polite"><div className="understanding-loading-label"><Sparkles size={14} /><span className="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Ich lese deine Stelle …</span></div><div className="understanding-skeleton"><i></i><i></i></div></div> : <div className="assumption understanding-ready"><div className="assumption-title"><span>KI</span>{!props.editing && <button onClick={() => { props.setDraft(props.assumptionText); props.setEditing(true) }}>Korrigieren</button>}</div>{props.editing ? <><textarea aria-label="KI-Verständnis korrigieren" value={props.draft} onChange={event => props.setDraft(event.target.value)} /><div className="assumption-actions"><button onClick={() => { props.setAssumptionText(props.draft); props.setEditing(false); props.onSave() }}>Bestätigen</button><button onClick={() => { props.setDraft(props.assumptionText); props.setEditing(false) }}>Abbrechen</button></div></> : <p>{props.assumptionText}</p>}<label className="optional-question">Eigene Frage <span>(optional)</span><div className="question-entry"><input value={props.questionDraft} placeholder="Was möchtest du noch wissen?" onChange={event => props.setQuestionDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addQuestion() } }} /><button type="button" disabled={!props.questionDraft.trim()} onClick={addQuestion}>Hinzufügen</button></div></label>{props.addedQuestion && <div className="added-question"><span>Eigene Frage ergänzt</span><p>„{props.addedQuestion}“</p><button onClick={() => props.setAddedQuestion(null)} aria-label="Eigene Frage entfernen"><X size={13} /></button></div>}</div>}</section>}
-    <button className="primary-button" disabled={!props.intent || props.isUnderstandingLoading} onClick={props.onStart}><Sparkles size={17} />Innehalten</button>
+    <button className="primary-button" disabled={!props.intent || !props.selectionText || props.isUnderstandingLoading} onClick={props.onStart}><Sparkles size={17} />Innehalten</button>
   </div>
 }
 
@@ -446,4 +470,35 @@ function EmptyPanel({ onClose, onExpand }: { onClose: () => void; onExpand: () =
 
 function BoundaryPanel({ onQuestions, onPerspective }: { onQuestions: () => void; onPerspective: () => void }) { return <div className="panel-content boundary"><div className="request-bubble"><span>LENA</span><p>„Schreib mir die Szene.“</p></div><div className="boundary-answer"><Sparkles size={18} /><p>Ich schreibe keine Prosa, damit es deine Geschichte bleibt. Ich kann dir Fragen stellen oder die Szene aus einer anderen Perspektive betrachten.</p></div><button className="primary-button" onClick={onQuestions}>Fragen stellen</button><button className="secondary-button" onClick={onPerspective}>Perspektive wechseln</button></div> }
 
-function CluesPanel({ selected, setSelected, onSave }: { selected: number | null; setSelected: (value: number | null) => void; onSave: () => void }) { return <div className="panel-content clues"><div className="clue-intro"><span className="ai-label"><Sparkles size={13} /> KI-IMPULS</span><h3>Ein Bruder existiert</h3><p>Diese fünf Stellen könnten Platz für einen Hinweis bieten. Du entscheidest, ob und was du dort selbst schreibst.</p></div><div className="progress"><span>Spuren prüfen</span><strong>{selected === null ? 0 : selected + 1} / 5</strong><div><i style={{ width: `${selected === null ? 0 : ((selected + 1) / 5) * 100}%` }} /></div></div><div className="clue-list">{clues.map((clue, index) => <article key={clue.chapter} className={`clue ${selected === index ? 'chosen' : ''}`}><button className="clue-toggle" onClick={() => setSelected(selected === index ? null : index)}><span><b>Kap. {clue.chapter}</b> · S. {clue.page}</span><ChevronDown size={16} /></button><p>„{clue.excerpt}“</p><div className="why"><Lightbulb size={15} /><span><b>Warum hier?</b>{clue.reason}</span></div><div className="clue-actions"><button onClick={() => setSelected(index)}>Zur Stelle springen</button><button>Auslassen</button></div></article>)}</div><button className="primary-button" onClick={onSave}>Zweig „Bruder“ sichern</button></div> }
+function CluesPanel({ selected, setSelected, clueStates, setClueStates, onChange, onSave }: { selected: number | null; setSelected: (value: number | null) => void; clueStates: Record<number, ClueStatus>; setClueStates: React.Dispatch<React.SetStateAction<Record<number, ClueStatus>>>; onChange: () => void; onSave: () => void }) {
+  const [detailIndex, setDetailIndex] = useState<number | null>(null)
+  const [draft, setDraft] = useState('')
+  const checkedCount = Object.keys(clueStates).length
+  const savedCount = Object.values(clueStates).filter(clue => clue.status === 'saved').length
+  const openDetail = (index: number) => { setDetailIndex(index); setDraft(clueStates[index]?.text ?? '') }
+  const saveTrace = () => {
+    if (detailIndex === null || !draft.trim()) return
+    setClueStates(current => ({ ...current, [detailIndex]: { status: 'saved', text: draft.trim() } }))
+    setSelected(detailIndex)
+    setDetailIndex(null)
+    onChange()
+  }
+  const skipTrace = (index: number) => {
+    setClueStates(current => ({ ...current, [index]: { status: 'skipped', text: '' } }))
+    setDetailIndex(null)
+    onChange()
+  }
+  const reactivateTrace = (index: number) => {
+    setClueStates(current => {
+      const { [index]: removed, ...remaining } = current
+      return remaining
+    })
+    onChange()
+  }
+  if (detailIndex !== null) {
+    const clue = clues[detailIndex]
+    const [before, after] = clue.context.split(clue.excerpt)
+    return <div className="panel-content clue-detail"><div className="clue-detail-top"><strong>Kap. {clue.chapter} · S. {clue.page}</strong><button onClick={() => setDetailIndex(null)}>← Zurück zur Liste</button></div><p className="clue-manuscript">{before}<mark>{clue.excerpt}</mark>{after}{draft && <><span className="author-trace"> {draft}</span><small className="author-trace-label">von dir geschrieben</small></>}</p><label>Deine Spur<textarea value={draft} onChange={event => setDraft(event.target.value)} placeholder="Schreib hier deinen Hinweis …" /></label><button className="author-save-trace" disabled={!draft.trim()} onClick={saveTrace}>Als Alternative speichern</button></div>
+  }
+  return <div className="panel-content clues"><div className="clue-intro"><span className="ai-label"><Sparkles size={13} /> KI-IMPULS</span><h3>Ein Bruder existiert</h3><p>Diese fünf Stellen könnten Platz für einen Hinweis bieten. Du entscheidest, ob und was du dort selbst schreibst.</p></div><div className="progress"><span>Spuren prüfen</span><strong>{checkedCount} / 5</strong><div><i style={{ width: `${(checkedCount / 5) * 100}%` }} /></div></div><div className="clue-list">{clues.map((clue, index) => { const state = clueStates[index]; return <article key={clue.chapter} className={`clue ${selected === index ? 'chosen' : ''} ${state?.status ?? ''}`}><button className="clue-toggle" onClick={() => setSelected(selected === index ? null : index)}><span><b>Kap. {clue.chapter}</b> · S. {clue.page}</span><ChevronDown size={16} /></button><p>„{clue.excerpt}“</p><div className="why"><Lightbulb size={15} /><span><b>Warum hier?</b>{clue.reason}</span></div><div className="clue-actions"><button onClick={() => openDetail(index)}>Zur Stelle springen</button>{state?.status === 'skipped' ? <><span>Ausgelassen</span><button className="reactivate-trace" onClick={() => reactivateTrace(index)}>Wieder aktivieren</button></> : <button onClick={() => skipTrace(index)}>Auslassen</button>}</div>{state?.status === 'saved' && <small className="trace-saved">✓ Spur gelegt</small>}</article> })}</div><button className="primary-button clue-save-branch" disabled={savedCount === 0} onClick={onSave}>Zweig „Bruder“ sichern</button></div>
+}
