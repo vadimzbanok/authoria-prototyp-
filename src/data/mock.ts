@@ -11,7 +11,7 @@ export const chapters = [
 export const manuscript = {
   title: 'Die leere Krone',
   chapter: 18,
-  page: 302,
+  page: 301,
   paragraphs: [
     'Der Morgen hatte keine Farbe. Über den Dächern von Arven lag ein stiller Nebel, und selbst die Glocken schienen den Atem anzuhalten. Teo stand am Fenster des Turmzimmers und zählte die Fahnen im Hof, bis er begriff, dass eine von ihnen auf halbmast hing.',
     'Mira sagte nichts, als die Wachen den Königssaal öffneten. Ihre Hand ruhte auf dem kalten Stein der Fensterbank. Hinter den hohen Türen warteten der Rat, die Gesandten und das Volk auf ein Zeichen, das niemand geben konnte.',
@@ -70,7 +70,7 @@ export const findings = [
     label: 'Offener Faden',
     title: 'Thronfolge',
     text: 'Prinz Edrik stirbt in Kap. 4, danach wird kein Erbe genannt.',
-    sources: [{ chapter: 4, page: 61 }, { chapter: 18, page: 302 }] satisfies Source[],
+    sources: [{ chapter: 4, page: 61 }, { chapter: 18, page: 301 }] satisfies Source[],
   },
   {
     title: '„Das andere Siegel“',
@@ -155,7 +155,7 @@ export const fundgrubePlaces = [
 ]
 
 export const fundgrubeThreads = [
-  { id: 'succession', title: 'Thronfolge', source: 'zuletzt Kap. 18, S. 302 ↗', status: 'offen' },
+  { id: 'succession', title: 'Thronfolge', source: 'zuletzt Kap. 18, S. 301 ↗', status: 'offen' },
   { id: 'seal', title: 'Das andere Siegel', source: 'zuletzt Kap. 16, S. 270 ↗', status: 'offen' },
   { id: 'oath', title: 'Teos Schwur', source: 'zuletzt Kap. 15, S. 251 ↗', status: 'bewusst offen' },
   { id: 'past', title: 'Miras Vergangenheit', source: 'zuletzt Kap. 7, S. 112 ↗', status: 'bewusst offen' },

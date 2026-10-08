@@ -51,6 +51,25 @@ function SourceLine({ sources, onOpenChapter }: { sources: { chapter: number; pa
   return <p className="source">Quelle: {sources.map((source, i) => <span key={`${source.chapter}-${source.page}`}>{source.chapter >= 15 && source.chapter <= 18 ? <button className="source-link" onClick={() => onOpenChapter(source.chapter)}>Kap. {source.chapter}, S. {source.page}</button> : <>Kap. {source.chapter}, S. {source.page}</>}{i < sources.length - 1 ? ' · ' : ''}</span>)} ↗</p>
 }
 
+function TypingText({ text }: { text: string }) {
+  const [visibleText, setVisibleText] = useState('')
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setVisibleText(text)
+      return
+    }
+    let index = 0
+    setVisibleText('')
+    const timer = window.setInterval(() => {
+      index += 1
+      setVisibleText(text.slice(0, index))
+      if (index >= text.length) window.clearInterval(timer)
+    }, 18)
+    return () => window.clearInterval(timer)
+  }, [text])
+  return <>{visibleText}</>
+}
+
 function ProjectSwitcher() {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -93,10 +112,15 @@ export default function App() {
   const [isUnderstandingLoading, setIsUnderstandingLoading] = useState(false)
   const [questionDraft, setQuestionDraft] = useState('')
   const [addedQuestion, setAddedQuestion] = useState<string | null>(null)
+  const [isQuestionThinking, setIsQuestionThinking] = useState(false)
+  const [questionResponse, setQuestionResponse] = useState<string | null>(null)
   const [privateNotes, setPrivateNotes] = useState<PrivateNote[]>([])
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [panelSelection, setPanelSelection] = useState<ManuscriptSelection | null>(null)
   const [panelChapter, setPanelChapter] = useState<number | null>(null)
+  const [panelBeforeSource, setPanelBeforeSource] = useState<PanelState | null>(null)
+  const [sourceReturnChapter, setSourceReturnChapter] = useState<number | null>(null)
+  const [sourceReturnSelection, setSourceReturnSelection] = useState<ManuscriptSelection | null>(null)
   const [selectionRequired, setSelectionRequired] = useState(false)
   const [showAlternatives, setShowAlternatives] = useState(false)
   const [feedback, setFeedback] = useState<Feedback>(null)
@@ -188,6 +212,8 @@ export default function App() {
     setAssumptionDraft('')
     setQuestionDraft('')
     setAddedQuestion(null)
+    setIsQuestionThinking(false)
+    setQuestionResponse(null)
     setIsUnderstandingLoading(false)
     understandingContextRef.current = ''
     understandingLoadingContextRef.current = ''
@@ -246,10 +272,27 @@ export default function App() {
     else act(`„${branch.title}“ bleibt als Möglichkeit sichtbar.`, 'Gemerkte Möglichkeit')
   }
   const openSourceChapter = (chapter: number) => {
+    if (chapter === activeChapter) return
+    setPanelBeforeSource(panel)
+    setSourceReturnChapter(activeChapter)
+    setSourceReturnSelection(manuscriptSelection)
     setActiveChapter(chapter)
     setManuscriptSelection(chapter === 18 ? initialManuscriptSelection : null)
     setPanel(null)
     setPage('schreibraum')
+  }
+  const selectChapter = (chapter: number) => {
+    const restorePanel = chapter === sourceReturnChapter && panelBeforeSource
+    setActiveChapter(chapter)
+    setManuscriptSelection(restorePanel ? sourceReturnSelection : chapter === 18 ? initialManuscriptSelection : null)
+    if (restorePanel) {
+      setPanel(panelBeforeSource)
+    } else {
+      closePanel()
+    }
+    setPanelBeforeSource(null)
+    setSourceReturnChapter(null)
+    setSourceReturnSelection(null)
   }
   const captureSelection = () => {
     const root = manuscriptRef.current
@@ -320,6 +363,8 @@ export default function App() {
     setBranchSaved(false)
     setClueStates({})
     setBrotherContinuation('')
+    setMainContinuation('')
+    setMainTrace('')
     setBranchMerged(false)
     markImportantChange()
   }
@@ -357,7 +402,7 @@ export default function App() {
         <aside className="sidebar">
           <div className="side-title"><span>MANUSKRIPT</span><button aria-label="Kapitel hinzufügen"><Plus size={17} /></button></div>
           <div className="book-title"><FileText size={16} /> Der Sommer der Könige</div>
-          <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => { setActiveChapter(chapter.number); setManuscriptSelection(chapter.number === 18 ? initialManuscriptSelection : null); closePanel() }} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>{activeBranch === 'brother' && changedChapters.includes(chapter.number) && <i className="chapter-change-dot" />}S. {chapter.page}</small></button>)}</div>
+          <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => selectChapter(chapter.number)} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>{activeBranch === 'brother' && changedChapters.includes(chapter.number) && <i className="chapter-change-dot" />}S. {chapter.page}</small></button>)}</div>
           <div className="sidebar-bottom"><button><Search size={16} />Durchsuchen</button><button><CircleHelp size={16} />Hilfe & Feedback</button></div>
         </aside>
 
@@ -376,7 +421,7 @@ export default function App() {
         {panel && <aside className="ai-panel" aria-label="Innehalten-Panel"><button className="panel-resizer" aria-label="Breite des Innehalten-Panels anpassen" onPointerDown={event => { event.preventDefault(); startPanelResize(event.clientX) }} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); updatePanelWidth(panelWidth + (event.key === 'ArrowLeft' ? 24 : -24)) } }} />
           <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'}</h2></div><button className="icon-button" onClick={closePanel} aria-label="Panel schließen"><X size={20} /></button></div>
           {panel !== 'input' && panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
-          {panel === 'input' && <InputPanel selectionText={selectedText} selectionRequired={selectionRequired} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} draft={assumptionDraft} setDraft={setAssumptionDraft} isUnderstandingLoading={isUnderstandingLoading} questionDraft={questionDraft} setQuestionDraft={setQuestionDraft} addedQuestion={addedQuestion} setAddedQuestion={setAddedQuestion} onSave={markImportantChange} onStart={() => { if (!manuscriptSelection) { setSelectionRequired(true); return }; setPanelSelection(manuscriptSelection); setPanelChapter(activeChapter); setPanel('loading') }} />}
+          {panel === 'input' && <InputPanel selectionText={selectedText} selectionRequired={selectionRequired} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} draft={assumptionDraft} setDraft={setAssumptionDraft} isUnderstandingLoading={isUnderstandingLoading} questionDraft={questionDraft} setQuestionDraft={setQuestionDraft} addedQuestion={addedQuestion} setAddedQuestion={setAddedQuestion} isQuestionThinking={isQuestionThinking} setIsQuestionThinking={setIsQuestionThinking} questionResponse={questionResponse} setQuestionResponse={setQuestionResponse} onSave={markImportantChange} onStart={() => { if (!manuscriptSelection) { setSelectionRequired(true); return }; setPanelSelection(manuscriptSelection); setPanelChapter(activeChapter); setPanel('loading') }} />}
           {panel === 'loading' && <LoadingPanel onCancel={() => setPanel('input')} />}
           {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} notes={privateNotes} chapter={activeChapter} onSaveNote={savePrivateNote} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} onFundgrube={() => setPage('fundgrube')} onOpenChapter={openSourceChapter} />}
           {panel === 'empty' && <EmptyPanel onClose={() => setPanel(null)} onExpand={() => { setScope('Ganzes Manuskript'); setPanel('loading') }} />}
@@ -486,7 +531,7 @@ function NotesView({ notes, onOpenNote }: { notes: PrivateNote[]; onOpenNote: (n
   return <section className="notes-view"><p className="notes-intro">Deine Gedanken bleiben privat und verändern dein Manuskript nicht.</p>{notes.length ? <div className="notes-list">{notes.map(note => <article key={note.id}><small>Kap. {note.chapter}</small><h2>{note.question}</h2><p>{note.text}</p><button onClick={() => onOpenNote(note)}>Zur Stelle <ArrowLeft className="arrow-right" size={13} /></button></article>)}</div> : <div className="notes-empty">Noch keine Notizen. Antworte im Innehalten-Panel auf eine Frage an dich.</div>}</section>
 }
 
-function InputPanel(props: { selectionText: string; selectionRequired: boolean; figureNames: string[]; scope: string; setScope: (value: string) => void; intent: string | null; setIntent: (value: string | null) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; draft: string; setDraft: (value: string) => void; isUnderstandingLoading: boolean; questionDraft: string; setQuestionDraft: (value: string) => void; addedQuestion: string | null; setAddedQuestion: (value: string | null) => void; onSave: () => void; onStart: () => void }) {
+function InputPanel(props: { selectionText: string; selectionRequired: boolean; figureNames: string[]; scope: string; setScope: (value: string) => void; intent: string | null; setIntent: (value: string | null) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; draft: string; setDraft: (value: string) => void; isUnderstandingLoading: boolean; questionDraft: string; setQuestionDraft: (value: string) => void; addedQuestion: string | null; setAddedQuestion: (value: string | null) => void; isQuestionThinking: boolean; setIsQuestionThinking: (value: boolean) => void; questionResponse: string | null; setQuestionResponse: (value: string | null) => void; onSave: () => void; onStart: () => void }) {
   const intentHelp: Record<string, string> = {
     'Ich stecke fest': 'Ich zeige dir Möglichkeiten, wie es weitergehen könnte.',
     'Was habe ich vergessen?': 'Ich suche offene Fäden und vergessene Figuren.',
@@ -498,13 +543,19 @@ function InputPanel(props: { selectionText: string; selectionRequired: boolean; 
     if (!question) return
     props.setAddedQuestion(question)
     props.setQuestionDraft('')
+    props.setQuestionResponse(null)
+    props.setIsQuestionThinking(true)
+    window.setTimeout(() => {
+      props.setIsQuestionThinking(false)
+      props.setQuestionResponse(/kap(?:itel|\.)?|\b(?:17|18|19)\b/i.test(question) ? 'Nein, dein aktuelles Manuskript reicht bis Kap. 18. Kap. 19 hattest du hinzugefügt, später aber gelöscht – deshalb gehört es nicht zum Kontext.' : 'Ich nehme diese Frage als zusätzlichen Kontext für dein Innehalten mit.')
+    }, 850)
     props.onSave()
   }
   return <div className="panel-content input-panel">
     <section className={`selected-text ${props.selectionRequired && !props.selectionText ? 'selection-required' : ''}`}><div className="input-section-heading"><i>1</i><h3>Deine Stelle</h3></div><p>{props.selectionText ? `„${props.selectionText}“` : props.selectionRequired ? 'Markiere zuerst eine Stelle im Manuskript, dann kann ich dir helfen.' : 'Markiere eine Stelle im Text.'}</p></section>
     <section><div className="input-section-heading"><i>2</i><h3>Was brauchst du?</h3></div><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => { if (value !== props.intent) props.setIntent(value) }}>{value}</Chip>)}</div><p className="input-hint">{props.intent ? intentHelp[props.intent] : 'Wähle zuerst, wobei ich dir helfen soll.'}</p></section>
     <section><div className="input-section-heading"><i>3</i><h3>Wo soll ich suchen?</h3></div><div className="chips">{scopes.map(value => <Chip key={value} active={props.scope === value} onClick={() => { if (value !== props.scope) props.setScope(value) }}>{value}</Chip>)}</div><p className="input-hint">Figuren-Chips kommen aus deiner markierten Stelle.</p></section>
-    {props.intent && <section><div className="input-section-heading"><i>4</i><h3>So verstehe ich dich</h3></div>{props.isUnderstandingLoading ? <div className="understanding-loading" aria-live="polite"><div className="understanding-loading-label"><Sparkles size={14} /><span className="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Ich lese deine Stelle …</span></div><div className="understanding-skeleton"><i></i><i></i></div></div> : <div className="assumption understanding-ready"><div className="assumption-title"><span>KI</span>{!props.editing && <button onClick={() => { props.setDraft(props.assumptionText); props.setEditing(true) }}>Korrigieren</button>}</div>{props.editing ? <><textarea aria-label="KI-Verständnis korrigieren" value={props.draft} onChange={event => props.setDraft(event.target.value)} /><div className="assumption-actions"><button onClick={() => { props.setAssumptionText(props.draft); props.setEditing(false); props.onSave() }}>Bestätigen</button><button onClick={() => { props.setDraft(props.assumptionText); props.setEditing(false) }}>Abbrechen</button></div></> : <p>{props.assumptionText}</p>}<label className="optional-question">Eigene Frage <span>(optional)</span><div className="question-entry"><input value={props.questionDraft} placeholder="Was möchtest du noch wissen?" onChange={event => props.setQuestionDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addQuestion() } }} /><button type="button" disabled={!props.questionDraft.trim()} onClick={addQuestion}>Hinzufügen</button></div></label>{props.addedQuestion && <div className="added-question"><span>Eigene Frage ergänzt</span><p>„{props.addedQuestion}“</p><button onClick={() => props.setAddedQuestion(null)} aria-label="Eigene Frage entfernen"><X size={13} /></button></div>}</div>}</section>}
+    {props.intent && <section><div className="input-section-heading"><i>4</i><Sparkles className="understanding-sparkles" size={15} /><h3>So verstehe ich dich</h3></div>{props.isUnderstandingLoading ? <div className="understanding-loading" aria-live="polite"><div className="understanding-loading-label"><Sparkles size={14} /><span className="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Ich lese deine Stelle …</span></div><div className="understanding-skeleton"><i></i><i></i></div></div> : <div className="assumption understanding-ready"><div className="assumption-title">{!props.editing && <button onClick={() => { props.setDraft(props.assumptionText); props.setEditing(true) }}>Korrigieren</button>}</div>{props.editing ? <><textarea aria-label="KI-Verständnis korrigieren" value={props.draft} onChange={event => props.setDraft(event.target.value)} /><div className="assumption-actions"><button onClick={() => { props.setAssumptionText(props.draft); props.setEditing(false); props.onSave() }}>Bestätigen</button><button onClick={() => { props.setDraft(props.assumptionText); props.setEditing(false) }}>Abbrechen</button></div></> : <p>{props.assumptionText}</p>}<label className="optional-question">Eigene Frage <span>(optional)</span><div className="question-entry"><input value={props.questionDraft} placeholder="Was möchtest du noch wissen?" onChange={event => props.setQuestionDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addQuestion() } }} /><button type="button" disabled={!props.questionDraft.trim()} onClick={addQuestion}>Hinzufügen</button></div></label>{props.addedQuestion && <div className="added-question"><span>Eigene Frage ergänzt</span><p>„{props.addedQuestion}“</p><button onClick={() => { props.setAddedQuestion(null); props.setQuestionResponse(null); props.setIsQuestionThinking(false) }} aria-label="Eigene Frage entfernen"><X size={13} /></button></div>}{props.isQuestionThinking && <div className="question-thinking" aria-live="polite"><Sparkles size={13} /><span className="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Ich prüfe den aktuellen Manuskriptstand …</span></div>}{props.questionResponse && <div className="question-response"><p><TypingText text={props.questionResponse} /></p></div>}</div>}</section>}
     <button className="primary-button" disabled={!props.intent || !props.selectionText || props.isUnderstandingLoading} onClick={props.onStart}><Sparkles size={17} />Innehalten</button>
   </div>
 }
