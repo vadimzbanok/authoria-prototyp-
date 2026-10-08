@@ -13,6 +13,7 @@ type SaveState = 'saving' | 'saved'
 type PrivateNote = { id: string; chapter: number; question: string; text: string; selection: ManuscriptSelection }
 type ClueStatus = { status: 'saved' | 'skipped'; text: string }
 type VersionsMode = 'overview' | 'changes'
+type ActiveBranch = 'main' | 'brother' | 'mira-claim'
 
 const initialSelectionStart = manuscript.paragraphs.slice(0, 2).join('').length
 const initialManuscriptSelection = { start: initialSelectionStart, end: initialSelectionStart + manuscript.paragraphs[2].length, text: manuscript.selection }
@@ -63,7 +64,7 @@ function ProjectSwitcher() {
   return <div className="project-switcher" ref={menuRef}><button className="project-title" onClick={() => setOpen(current => !current)} aria-expanded={open} aria-haspopup="menu"><span>Der Sommer der Könige</span><ChevronDown size={15} /></button>{open && <div className="project-menu" role="menu"><strong>Deine Projekte</strong><button className="active" role="menuitem"><span><b>Der Sommer der Könige</b><small>18 Kapitel · heute bearbeitet</small></span><i>✓</i></button><button role="menuitem"><span><b>Das Lied der Salzwüste</b><small>7 Kapitel · vor 3 Wochen</small></span></button><button role="menuitem"><span><b>Nordlicht über Velmor</b><small>Idee · noch kein Kapitel</small></span></button><hr /><button className="menu-link" role="menuitem">Alle Projekte ansehen</button><button className="menu-link" role="menuitem">+ Neues Projekt</button></div>}</div>
 }
 
-function BranchSwitcher({ activeBranch, brotherCreated, onChange }: { activeBranch: 'main' | 'brother'; brotherCreated: boolean; onChange: (branch: 'main' | 'brother') => void }) {
+function BranchSwitcher({ activeBranch, brotherCreated, onChange }: { activeBranch: ActiveBranch; brotherCreated: boolean; onChange: (branch: ActiveBranch) => void }) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -73,8 +74,9 @@ function BranchSwitcher({ activeBranch, brotherCreated, onChange }: { activeBran
     document.addEventListener('keydown', closeOnEscape)
     return () => { document.removeEventListener('mousedown', closeOnOutsideClick); document.removeEventListener('keydown', closeOnEscape) }
   }, [])
-  const choose = (branch: 'main' | 'brother') => { onChange(branch); setOpen(false) }
-  return <div className="branch-switcher" ref={menuRef}><button className={`active-branch-pill ${activeBranch}`} onClick={() => setOpen(current => !current)} aria-expanded={open} aria-haspopup="menu">⌘ {activeBranch === 'main' ? 'Hauptlinie' : 'Zweig: Bruder'}⌄</button>{open && <div className="branch-menu" role="menu"><button className={activeBranch === 'main' ? 'active' : ''} onClick={() => choose('main')} role="menuitem">Hauptlinie</button>{brotherCreated && <button className={activeBranch === 'brother' ? 'active' : ''} onClick={() => choose('brother')} role="menuitem">Zweig „Bruder“</button>}</div>}</div>
+  const choose = (branch: ActiveBranch) => { onChange(branch); setOpen(false) }
+  const branchLabel = activeBranch === 'main' ? 'Hauptlinie' : activeBranch === 'brother' ? 'Zweig: Bruder' : 'Zweig: Mira'
+  return <div className="branch-switcher" ref={menuRef}><button className={`active-branch-pill ${activeBranch}`} onClick={() => setOpen(current => !current)} aria-expanded={open} aria-haspopup="menu">⌘ {branchLabel}⌄</button>{open && <div className="branch-menu" role="menu"><button className={activeBranch === 'main' ? 'active' : ''} onClick={() => choose('main')} role="menuitem">Hauptlinie</button>{brotherCreated && <button className={activeBranch === 'brother' ? 'active' : ''} onClick={() => choose('brother')} role="menuitem">Zweig „Bruder“</button>}<button className={activeBranch === 'mira-claim' ? 'active' : ''} onClick={() => choose('mira-claim')} role="menuitem">Zweig „Mira beansprucht den Thron“</button></div>}</div>
 }
 
 function SaveStatus({ state, branch }: { state: SaveState; branch?: 'brother' }) {
@@ -111,7 +113,7 @@ export default function App() {
   const [findingsState, setFindingsState] = useState<Record<string, 'new' | 'confirmed' | 'removed'>>({})
   const [hasFundgrubeUpdates, setHasFundgrubeUpdates] = useState(false)
   const [threadStatus, setThreadStatus] = useState(() => Object.fromEntries(fundgrubeThreads.map(thread => [thread.id, thread.status])) as Record<string, string>)
-  const [activeBranch, setActiveBranch] = useState<'main' | 'brother'>('main')
+  const [activeBranch, setActiveBranch] = useState<ActiveBranch>('main')
   const [brotherCreated, setBrotherCreated] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [panelWidth, setPanelWidth] = useState(460)
@@ -198,7 +200,7 @@ export default function App() {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(() => setSaveState('saved'), 900)
   }
-  const changeBranch = (branch: 'main' | 'brother') => {
+  const changeBranch = (branch: ActiveBranch) => {
     if (branch === activeBranch) return
     setActiveBranch(branch)
     markImportantChange()
@@ -382,9 +384,12 @@ export default function App() {
   )
 }
 
-function Versions({ volume, setVolume, notificationCount, activeBranch, brotherCreated, clueStates, brotherContinuation, view, setActiveBranch, onMerge, onDiscard, onContinue, onOpenChapter, onSave, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; activeBranch: 'main' | 'brother'; brotherCreated: boolean; clueStates: Record<number, ClueStatus>; brotherContinuation: string; view: VersionsMode; setActiveBranch: (branch: 'main' | 'brother') => void; onMerge: () => void; onDiscard: () => void; onContinue: () => void; onOpenChapter: (chapter: number) => void; onSave: () => void; onWritingRoom: () => void; onFundgrube: () => void }) {
+function Versions({ volume, setVolume, notificationCount, activeBranch, brotherCreated, clueStates, brotherContinuation, view, setActiveBranch, onMerge, onDiscard, onContinue, onOpenChapter, onSave, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; activeBranch: ActiveBranch; brotherCreated: boolean; clueStates: Record<number, ClueStatus>; brotherContinuation: string; view: VersionsMode; setActiveBranch: (branch: ActiveBranch) => void; onMerge: () => void; onDiscard: () => void; onContinue: () => void; onOpenChapter: (chapter: number) => void; onSave: () => void; onWritingRoom: () => void; onFundgrube: () => void }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  useEffect(() => {
+    if (brotherCreated) setActiveBranch('brother')
+  }, [brotherCreated])
   const active = versionsBranches.find(branch => branch.id === activeBranch) ?? versionsBranches[0]
   const savedClueIndex = clues.findIndex((_, index) => clueStates[index]?.status === 'saved')
   const savedClue = savedClueIndex >= 0 ? clues[savedClueIndex] : null
@@ -404,8 +409,8 @@ function Versions({ volume, setVolume, notificationCount, activeBranch, brotherC
       <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={event => setVolume(event.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
     </header>
     <div className="versions-layout">
-      <aside className="versions-sidebar"><div className="side-title"><span>ZWEIGE</span></div>{versionsBranches.map(branch => <button key={branch.id} className={activeBranch === branch.id ? 'active' : ''} onClick={() => { if (branch.id === 'main' || (branch.id === 'brother' && brotherCreated)) setActiveBranch(branch.id) }}><i className={branch.id === 'brother' ? 'green' : ''} /><span><strong>{branch.name}</strong><small>{branch.detail}</small></span></button>)}<div className="versions-note">Nichts geht verloren. Jede Änderung wird automatisch gesichert, das Original bleibt immer erhalten.</div></aside>
-      <section className="versions-content"><div className="versions-heading"><div className="eyebrow author-label">NICHTS GEHT VERLOREN</div><h1>{view === 'changes' ? 'Zweig „Bruder“ · alle Änderungen' : 'Versionen & Zweige'}</h1><p>{view === 'changes' ? 'Entstanden aus Innehalten · Kap. 18 · „Ein Bruder existiert“. Links das Original, rechts deine Änderungen.' : <>Probier Ideen aus, ohne etwas zu riskieren. {activeBranch === 'brother' ? 'Der Zweig „Bruder“ ist gerade aktiv.' : 'Die Hauptlinie ist gerade aktiv.'}</>}</p></div>
+      <aside className="versions-sidebar"><div className="side-title"><span>ZWEIGE</span></div>{versionsBranches.map(branch => <button key={branch.id} className={activeBranch === branch.id ? 'active' : ''} onClick={() => setActiveBranch(branch.id as ActiveBranch)}><i className={activeBranch === branch.id ? 'green' : ''} /><span><strong>{branch.name}</strong><small>{branch.detail}</small></span></button>)}<div className="versions-note">Nichts geht verloren. Jede Änderung wird automatisch gesichert, das Original bleibt immer erhalten.</div></aside>
+      <section className="versions-content"><div className="versions-heading"><div className="eyebrow author-label">NICHTS GEHT VERLOREN</div><h1>{view === 'changes' ? 'Zweig „Bruder“ · alle Änderungen' : 'Versionen & Zweige'}</h1><p>{view === 'changes' ? 'Entstanden aus Innehalten · Kap. 18 · „Ein Bruder existiert“. Links das Original, rechts deine Änderungen.' : <>Probier Ideen aus, ohne etwas zu riskieren. {active.name} ist gerade aktiv.</>}</p></div>
         {view === 'changes' ? <BranchChanges changes={branchChanges} onOpenChapter={onOpenChapter} onMerge={() => { onMerge(); notify('In die Hauptlinie übernommen') }} onContinue={onContinue} onRequestDiscard={() => setConfirmDiscard(true)} /> : <>
         <section className="comparison-card"><div className="comparison-title"><strong>Zweig-Vergleich · {comparisonTitle}</strong><span><Sparkles size={11} /> Unterschiede markiert</span></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>{comparisonOriginal}</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label>{brotherContinuation.trim() ? <><p>{comparisonOriginal} <mark className="author-insert">{brotherContinuation}</mark></p><small>+1 Satz · von dir geschrieben</small></> : savedClue ? <><p>{savedClue.context} <mark className="author-insert">{savedClueText}</mark></p><small>+1 Satz · von dir geschrieben</small></> : <><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte. <mark>„Wir waren zwei“, sagte er einmal, und schwieg danach so lange, dass niemand nachzufragen wagte.</mark></p><small>+1 Satz · von dir geschrieben</small></>}</article></div><div className="compare-actions"><button className="author-primary" onClick={() => { onMerge(); notify('In die Hauptlinie übernommen') }}>Zweig übernehmen</button><button onClick={onContinue}>Im Zweig weiterschreiben</button><button onClick={() => setConfirmDiscard(true)}>Zweig verwerfen</button></div></section>
         <div className="versions-columns"><section className="history"><div className="history-title"><h2>Verlauf</h2><span>automatisch gesichert</span></div><div className="history-card">{branchHistory.map(item => <article key={item.title}><i className={item.tone} /><div><h3>{item.title}</h3><p>{item.detail}</p></div><span className={item.tone === 'author' || item.tone === 'branch' ? 'branch-badge' : 'main-badge'}>{item.branch}</span><button onClick={() => notify('Version wiederhergestellt')}>Wiederherstellen</button></article>)}</div></section><aside><section className="branch-summary"><h2>{active.name}</h2><p>Entstanden aus:</p><strong>Innehalten · Kap. 18 · „Ein Bruder existiert“</strong><p>Spuren gelegt: 2 von 5 Stellen</p><div className="branch-progress"><i /></div><button>Weitere Spuren legen ↗</button></section><section className="saved-info"><h2>Was gesichert wird</h2><ul><li>jede Änderung, automatisch</li><li>das Original bleibt immer erhalten</li><li>Zweige übernimmt nur du</li></ul><small>KI · automatisieren: sichert und markiert. Entscheiden: nur du.</small></section></aside></div></>}
@@ -418,7 +423,7 @@ function BranchChanges({ changes, onOpenChapter, onMerge, onContinue, onRequestD
   return <div className="branch-changes-view">{changes.map(change => <section className="change-card" key={change.chapter}><div className="change-card-top"><strong>Kap. {change.chapter}</strong><button onClick={() => onOpenChapter(change.chapter)}>Zur Stelle ↗</button></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>{change.original}</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label><p>{change.original} <mark className="author-insert">{change.text}</mark></p><small>{change.meta}</small></article></div></section>)}{changes.length === 0 && <div className="changes-empty">Noch keine gespeicherten Änderungen im Zweig.</div>}<div className="compare-actions branch-changes-actions"><button className="author-primary" onClick={onMerge}>Zweig übernehmen</button><button onClick={onContinue}>Im Zweig weiterschreiben</button><button onClick={onRequestDiscard}>Zweig verwerfen</button></div></div>
 }
 
-function Fundgrube({ volume, setVolume, notificationCount, findingsState, setFindingsState, threadStatus, setThreadStatus, notes, activeBranch, brotherCreated, setActiveBranch, onSave, onOpenNote, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; notificationCount: number; findingsState: Record<string, 'new' | 'confirmed' | 'removed'>; setFindingsState: React.Dispatch<React.SetStateAction<Record<string, 'new' | 'confirmed' | 'removed'>>>; threadStatus: Record<string, string>; setThreadStatus: React.Dispatch<React.SetStateAction<Record<string, string>>>; notes: PrivateNote[]; activeBranch: 'main' | 'brother'; brotherCreated: boolean; setActiveBranch: (branch: 'main' | 'brother') => void; onSave: () => void; onOpenNote: (note: PrivateNote) => void; onWritingRoom: () => void; onVersions: () => void }) {
+function Fundgrube({ volume, setVolume, notificationCount, findingsState, setFindingsState, threadStatus, setThreadStatus, notes, activeBranch, brotherCreated, setActiveBranch, onSave, onOpenNote, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; notificationCount: number; findingsState: Record<string, 'new' | 'confirmed' | 'removed'>; setFindingsState: React.Dispatch<React.SetStateAction<Record<string, 'new' | 'confirmed' | 'removed'>>>; threadStatus: Record<string, string>; setThreadStatus: React.Dispatch<React.SetStateAction<Record<string, string>>>; notes: PrivateNote[]; activeBranch: ActiveBranch; brotherCreated: boolean; setActiveBranch: (branch: ActiveBranch) => void; onSave: () => void; onOpenNote: (note: PrivateNote) => void; onWritingRoom: () => void; onVersions: () => void }) {
   const [view, setView] = useState<FundgrubeView>('Übersicht')
   const [filter, setFilter] = useState<FundgrubeFilter>('all')
   const [contradictionVisible, setContradictionVisible] = useState(true)
