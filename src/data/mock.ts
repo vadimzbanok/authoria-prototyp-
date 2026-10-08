@@ -146,7 +146,7 @@ export const fundgrubePlaces = [
 ]
 
 export const fundgrubeThreads = [
-  { id: 'succession', title: 'Thronfolge nach Edriks Tod', source: 'zuletzt Kap. 18, S. 302 ↗', status: 'offen' },
+  { id: 'succession', title: 'Thronfolge', source: 'zuletzt Kap. 18, S. 302 ↗', status: 'offen' },
   { id: 'seal', title: 'Das andere Siegel', source: 'zuletzt Kap. 16, S. 270 ↗', status: 'offen' },
   { id: 'oath', title: 'Teos Schwur', source: 'zuletzt Kap. 15, S. 251 ↗', status: 'bewusst offen' },
   { id: 'past', title: 'Miras Vergangenheit', source: 'zuletzt Kap. 7, S. 112 ↗', status: 'bewusst offen' },
