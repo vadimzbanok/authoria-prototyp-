@@ -86,6 +86,7 @@
   pointer-events: none;
 }
 
+
 .theme-toggle {
   display: inline-flex;
   align-items: center;
@@ -305,3 +306,36 @@
 .branch-note {
   margin-top: 10px;
 }
+
+/* Presentation flow in Hilfe & Feedback */
+.presentation-header-title { margin-left: 26px; color: #5c5c5c; font-size: 13px; font-weight: 600; }
+.presentation-layout { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: calc(100vh - 66px); }
+.presentation-sidebar { padding: 27px 14px 20px; border-right: 1px solid #e2e2e2; background: #fbfaf7; display: flex; flex-direction: column; gap: 4px; }
+.presentation-sidebar button { display: flex; align-items: center; gap: 9px; border: 0; border-radius: 5px; padding: 10px; color: #5c5c5c; background: none; font-size: 12px; text-align: left; }
+.presentation-sidebar .presentation-side-active { background: #ebe8e1; color: #1e1e1e; font-weight: 700; }
+.presentation-sidebar p { margin: 18px 10px 0; color: #777; font-size: 11px; line-height: 1.5; }
+.presentation-content { max-width: 930px; padding: 64px clamp(34px, 8vw, 110px) 36px; }
+.presentation-intro h1 { margin: 8px 0 9px; font: 500 42px/1.08 Literata, serif; letter-spacing: -.8px; }
+.presentation-intro p { max-width: 580px; margin: 0; color: #5c5c5c; font-size: 14px; line-height: 1.55; }
+.presentation-steps { position: relative; display: grid; gap: 0; max-width: 760px; margin: 45px 0 30px; padding: 0; list-style: none; }
+.presentation-steps::before { position: absolute; top: 28px; bottom: 28px; left: 17px; width: 1px; background: #ddd7e7; content: ''; }
+.presentation-steps li { position: relative; display: grid; grid-template-columns: 36px 1fr; gap: 19px; padding: 0 0 26px; }
+.presentation-steps li:last-child { padding-bottom: 0; }
+.presentation-steps li > span { z-index: 1; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #1e1e1e; color: #fff; font-size: 10px; font-weight: 700; }
+.presentation-steps li:nth-child(3) > span, .presentation-steps li:nth-child(4) > span { background: #7b5bd6; }
+.presentation-steps li:nth-child(5) > span, .presentation-steps li:nth-child(6) > span { background: #3e8e4f; }
+.presentation-steps h2 { margin: 5px 0 5px; font-size: 16px; }
+.presentation-steps p { max-width: 615px; margin: 0; color: #5c5c5c; font-size: 13px; line-height: 1.5; }
+.presentation-principle { max-width: 760px; margin-top: 38px; padding: 17px 19px; border-left: 3px solid #7b5bd6; background: #f5f1fc; }
+.presentation-principle strong { color: #563b9f; font-size: 12px; }
+.presentation-principle p { margin: 6px 0 0; color: #4d4758; font-size: 12px; line-height: 1.55; }
+.presentation-copyright { margin-top: 46px; color: #777; font-size: 11px; }
+.dark-mode .presentation-sidebar { background: #232221; border-color: #4c4945; }
+.dark-mode .presentation-sidebar .presentation-side-active { background: #3a3936; color: #f3f1ed; }
+.dark-mode .presentation-sidebar button, .dark-mode .presentation-sidebar p, .dark-mode .presentation-header-title, .dark-mode .presentation-intro p, .dark-mode .presentation-steps p, .dark-mode .presentation-copyright { color: #c9c5be; }
+.dark-mode .presentation-intro h1, .dark-mode .presentation-steps h2 { color: #f5f1ed; }
+.dark-mode .presentation-steps::before { background: #57534e; }
+.dark-mode .presentation-principle { background: #302a3f; border-color: #9b80e2; }
+.dark-mode .presentation-principle strong { color: #c8b5ff; }
+.dark-mode .presentation-principle p { color: #e1d9ee; }
+@media (max-width: 760px) { .presentation-layout { grid-template-columns: 1fr; }.presentation-sidebar { min-height: 0; border-right: 0; border-bottom: 1px solid #e2e2e2; }.presentation-content { padding: 40px 26px; }.presentation-intro h1 { font-size: 34px; } }

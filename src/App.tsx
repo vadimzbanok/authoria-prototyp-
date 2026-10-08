@@ -5,7 +5,7 @@ import './notes.css'
 
 type PanelState = 'input' | 'loading' | 'result' | 'empty' | 'boundary' | 'clues'
 type Feedback = { message: string; action: string } | null
-type Page = 'schreibraum' | 'fundgrube' | 'versionen'
+type Page = 'schreibraum' | 'fundgrube' | 'versionen' | 'hilfe'
 type FundgrubeView = 'Übersicht' | 'Figuren' | 'Orte' | 'Offene Fäden' | 'Widersprüche' | 'Notizen'
 type FundgrubeFilter = 'all' | 'new' | 'confirmed'
 type ManuscriptSelection = { start: number; end: number; text: string }
@@ -152,9 +152,9 @@ export default function App() {
   const manuscriptRef = useRef<HTMLElement>(null)
   const [activeChapter, setActiveChapter] = useState(18)
   const currentManuscript = chapterManuscripts[activeChapter]
-  const activeMainlineContinuation = activeChapter === 18 ? mainContinuation : mainlineContinuations[activeChapter] ?? ''
+  const activeMainlineContinuation = mainlineContinuations[activeChapter] ?? ''
   const activeMainlineContinuationAnchor = mainlineContinuationAnchors[activeChapter]
-  const canContinueInBrother = activeChapter === 18 && activeBranch === 'brother' && branchSaved
+  const canContinueInBrother = activeChapter === 18 && activeBranch === 'brother' && (branchSaved || Object.values(clueStates).some(clue => clue.status === 'saved'))
   const brotherTrace = clueStates[0]?.status === 'saved' ? clueStates[0].text : ''
   const changedChapters = [brotherTrace && 2, brotherContinuation.trim() && 18].filter(Boolean) as number[]
   const selectedText = manuscriptSelection?.text ?? ''
@@ -291,16 +291,20 @@ export default function App() {
   }
   const selectChapter = (chapter: number) => {
     const restorePanel = chapter === sourceReturnChapter && panelBeforeSource
+    const keepOpenPanel = panel !== null
+    const returnsToPanelContext = keepOpenPanel && chapter === panelChapter
     setActiveChapter(chapter)
-    setManuscriptSelection(restorePanel ? sourceReturnSelection : chapter === 18 ? initialManuscriptSelection : null)
+    setManuscriptSelection(restorePanel ? sourceReturnSelection : returnsToPanelContext ? panelSelection : chapter === 18 ? initialManuscriptSelection : null)
     if (restorePanel) {
       setPanel(panelBeforeSource)
-    } else {
+    } else if (!keepOpenPanel) {
       closePanel()
     }
-    setPanelBeforeSource(null)
-    setSourceReturnChapter(null)
-    setSourceReturnSelection(null)
+    if (restorePanel) {
+      setPanelBeforeSource(null)
+      setSourceReturnChapter(null)
+      setSourceReturnSelection(null)
+    }
   }
   const captureSelection = () => {
     const root = manuscriptRef.current
@@ -423,6 +427,10 @@ export default function App() {
   }
   const continueInBranch = () => openBranchChapter(18)
 
+  if (page === 'hilfe') {
+    return <PresentationFlow darkMode={darkMode} setDarkMode={setDarkMode} onWritingRoom={() => setPage('schreibraum')} />
+  }
+
   if (page === 'fundgrube') {
     return <Fundgrube initialView={fundgrubeView} volume={volume} setVolume={setVolume} darkMode={darkMode} setDarkMode={setDarkMode} notificationCount={fundgrubeBadge} hasNewFindings={hasFundgrubeUpdates} findingsState={findingsState} setFindingsState={setFindingsState} threadStatus={threadStatus} setThreadStatus={setThreadStatus} notes={privateNotes} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onRemoveFinding={removeFundgrubeFinding} onOpenNote={openPrivateNote} onWritingRoom={returnToWritingRoom} onVersions={() => setPage('versionen')} />
   }
@@ -445,7 +453,7 @@ export default function App() {
           <div className="side-title"><span>MANUSKRIPT</span><button aria-label="Kapitel hinzufügen"><Plus size={17} /></button></div>
           <div className="book-title"><FileText size={16} /> Der Sommer der Könige</div>
           <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => selectChapter(chapter.number)} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>{activeBranch === 'brother' && changedChapters.includes(chapter.number) && <i className="chapter-change-dot" />}S. {chapter.page}</small></button>)}</div>
-          <div className="sidebar-bottom"><button aria-label="Einstellungen"><Settings size={16} />Einstellungen</button><button><Search size={16} />Durchsuchen</button><button><CircleHelp size={16} />Hilfe & Feedback</button></div>
+          <div className="sidebar-bottom"><button aria-label="Einstellungen"><Settings size={16} />Einstellungen</button><button><Search size={16} />Durchsuchen</button><button onClick={() => setPage('hilfe')}><CircleHelp size={16} />Hilfe & Feedback</button></div>
         </aside>
 
         <section className="editor" aria-label="Manuskript" onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
@@ -453,7 +461,8 @@ export default function App() {
           <div className="editor-meta"><span>Kapitel {activeChapter}</span><span>·</span><span>Seite {currentManuscript.page}</span></div>
           <article className="manuscript" ref={manuscriptRef} onMouseUp={captureSelection} onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
             <h1>{currentManuscript.title}</h1>
-            {(() => { let offset = 0; return currentManuscript.paragraphs.map((paragraph, index) => { const start = offset; offset += paragraph.length; const selectionEndsHere = Boolean(manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset); const brotherContinuationEndsHere = Boolean(brotherContinuationAnchor && brotherContinuationAnchor.end > start && brotherContinuationAnchor.end <= offset); const mainlineContinuationEndsHere = Boolean(activeMainlineContinuationAnchor && activeMainlineContinuationAnchor.end > start && activeMainlineContinuationAnchor.end <= offset); const paragraphNotes = privateNotes.filter(note => note.showInMargin !== false && note.chapter === activeChapter && note.selection.end > start && note.selection.end <= offset); const traceText = activeBranch === 'brother' ? brotherTrace : mainTrace; const showBranchTrace = activeChapter === 2 && paragraph.includes('Stallmeister') && traceText && (activeBranch === 'brother' || branchMerged); const insertBrotherContinuation = canContinueInBrother && (brotherContinuationEndsHere || (!brotherContinuationAnchor && selectionEndsHere)); const insertMainlineContinuation = activeBranch === 'main' && (mainlineContinuationEndsHere || (!activeMainlineContinuationAnchor && index === currentManuscript.paragraphs.length - 1)); return <div className="manuscript-entry" key={paragraph}><p data-manuscript-paragraph data-paragraph-index={index}>{selectionParts(paragraph, start, manuscriptSelection)}{showBranchTrace && <span className={activeBranch === 'brother' ? 'inline-branch-trace' : 'inline-merged-trace'}> {traceText}</span>}</p>{paragraphNotes.map(note => <MarginNote key={note.id} note={note} editing={editingNoteId === note.id} onEdit={() => setEditingNoteId(note.id)} onCancel={() => setEditingNoteId(null)} onUpdate={updatePrivateNote} onDelete={deletePrivateNote} />)}{insertBrotherContinuation && <><BranchContinuation value={brotherContinuation} onChange={value => { setBrotherContinuation(value); markImportantChange() }} /><div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt<button className="branch-return" onClick={mergeBrotherIntoMain}>Speichern &amp; zur Hauptlinie</button></div></>}{insertMainlineContinuation && <MainlineContinuation value={activeMainlineContinuation} onChange={value => { if (activeChapter === 18) setMainContinuation(value); else setMainlineContinuations(current => ({ ...current, [activeChapter]: value })); markImportantChange() }} />}{selectionEndsHere && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
+            {(() => { let offset = 0; return currentManuscript.paragraphs.map((paragraph, index) => { const start = offset; offset += paragraph.length; const selectionEndsHere = Boolean(manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset); const brotherContinuationEndsHere = Boolean(brotherContinuationAnchor && brotherContinuationAnchor.end > start && brotherContinuationAnchor.end <= offset); const mergedContinuationEndsHere = Boolean(activeMainlineContinuationAnchor && activeMainlineContinuationAnchor.end > start && activeMainlineContinuationAnchor.end <= offset); const paragraphNotes = privateNotes.filter(note => note.showInMargin !== false && note.chapter === activeChapter && note.selection.end > start && note.selection.end <= offset); const traceText = activeBranch === 'brother' ? brotherTrace : mainTrace; const showBranchTrace = activeChapter === 2 && paragraph.includes('Stallmeister') && traceText && (activeBranch === 'brother' || branchMerged); const insertBrotherContinuation = canContinueInBrother && (brotherContinuationEndsHere || (!brotherContinuationAnchor && selectionEndsHere)); const insertMergedContinuation = activeBranch === 'main' && branchMerged && mainContinuation && mergedContinuationEndsHere; return <div className="manuscript-entry" key={paragraph}><p data-manuscript-paragraph data-paragraph-index={index}>{selectionParts(paragraph, start, manuscriptSelection)}{showBranchTrace && <span className={activeBranch === 'brother' ? 'inline-branch-trace' : 'inline-merged-trace'}> {traceText}</span>}</p>{paragraphNotes.map(note => <MarginNote key={note.id} note={note} editing={editingNoteId === note.id} onEdit={() => setEditingNoteId(note.id)} onCancel={() => setEditingNoteId(null)} onUpdate={updatePrivateNote} onDelete={deletePrivateNote} />)}{insertBrotherContinuation && <><BranchContinuation value={brotherContinuation} onChange={value => { setBrotherContinuation(value); markImportantChange() }} /><div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt<button className="branch-return" onClick={mergeBrotherIntoMain}>Speichern &amp; zur Hauptlinie</button></div></>}{insertMergedContinuation && <p className="merged-manuscript-continuation">{mainContinuation}</p>}{selectionEndsHere && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
+            {activeBranch === 'main' && <MainlineContinuation value={activeMainlineContinuation} onChange={value => { setMainlineContinuations(current => ({ ...current, [activeChapter]: value })); markImportantChange() }} />}
             {activeChapter === 18 && activeBranch === 'brother' && <p className="branch-text-legend">Neu im Zweig „Bruder“ · grün unterstrichen = von dir geschrieben</p>}
             {activeChapter === 18 && activeBranch === 'main' && brotherCreated && !branchMerged && <aside className="mainline-branch-hint">Du bist in der Hauptlinie: das Original, ohne die Änderungen aus dem Zweig „Bruder“. Der Zweig bleibt gespeichert.</aside>}
           </article>
@@ -529,6 +538,24 @@ function MainlineManuscript({ mainContinuation, mainTrace, onBack }: { mainConti
 
 function ThemeToggle({ darkMode, onToggle }: { darkMode: boolean; onToggle: () => void }) {
   return <button className="theme-toggle" type="button" onClick={onToggle} aria-pressed={darkMode} aria-label={darkMode ? 'Hellen Modus aktivieren' : 'Dunklen Modus aktivieren'}>{darkMode ? <Sun size={15} /> : <Moon size={15} />}<span>{darkMode ? 'Hell' : 'Dunkel'}</span></button>
+}
+
+function PresentationFlow({ darkMode, setDarkMode, onWritingRoom }: { darkMode: boolean; setDarkMode: React.Dispatch<React.SetStateAction<boolean>>; onWritingRoom: () => void }) {
+  const steps = [
+    ['01', 'Schreibraum', 'Lena schreibt frei. Sobald sie stockt, markiert sie ihre eigene Stelle im Manuskript.'],
+    ['02', 'Innehalten', 'Sie entscheidet selbst, wobei sie Unterstützung braucht und wo Authoria nach Zusammenhängen schauen soll.'],
+    ['03', 'Muster erkennen', 'Fundstücke, offene Fäden und Fragen machen sichtbar, was bereits in ihrer Geschichte angelegt ist.'],
+    ['04', 'Möglichkeit wählen', '„Ein Bruder existiert“ bleibt eine Möglichkeit. Lena entscheidet, ob sie diese Spur verfolgen möchte.'],
+    ['05', 'Spuren legen', 'Authoria zeigt passende frühere Stellen. Den Hinweis schreibt Lena selbst in einem geschützten Zweig.'],
+    ['06', 'Vergleichen & weiterschreiben', 'Original und Zweig bleiben getrennt, bis Lena übernimmt. Danach schreibt sie mit ihrer eigenen Stimme weiter.'],
+  ]
+  return <main className={`app presentation-app ${darkMode ? 'dark-mode' : ''}`}>
+    <header className="topbar"><div className="brand"><span className="brand-mark">A</span><span>authoria</span></div><div className="presentation-header-title">Hilfe &amp; Feedback</div><div className="top-actions"><ThemeToggle darkMode={darkMode} onToggle={() => setDarkMode(current => !current)} /><button className="avatar" aria-label="Profil von Lena">LW</button></div></header>
+    <div className="presentation-layout">
+      <aside className="presentation-sidebar"><div className="side-title"><span>HILFE &amp; FEEDBACK</span></div><button className="presentation-side-active"><CircleHelp size={16} />Präsentations-Flow</button><button onClick={onWritingRoom}><ArrowLeft size={16} />Zum Schreibraum</button><p>Eine kurze Führung durch den Kernzyklus von Authoria.</p></aside>
+      <section className="presentation-content"><div className="presentation-intro"><div className="eyebrow author-label">PROTOTYP-FÜHRUNG</div><h1>Der Authoria-Zyklus</h1><p>So unterstützt Authoria Discovery Writer beim Denken, ohne ihre Geschichte zu schreiben.</p></div><ol className="presentation-steps">{steps.map(([number, title, text]) => <li key={number}><span>{number}</span><div><h2>{title}</h2><p>{text}</p></div></li>)}</ol><section className="presentation-principle"><strong>Die Regel im ganzen Flow</strong><p>Die KI erkennt Muster, stellt Fragen und zeigt Quellen. Sie fügt niemals Prosa in Lenas Manuskript ein.</p></section><footer className="presentation-copyright">© 2026 Vadim Zbanok · Authoria UX/UI-Prototyp</footer></section>
+    </div>
+  </main>
 }
 
 function Fundgrube({ initialView, volume, setVolume, darkMode, setDarkMode, notificationCount, hasNewFindings, findingsState, setFindingsState, threadStatus, setThreadStatus, notes, activeBranch, brotherCreated, setActiveBranch, onSave, onRemoveFinding, onOpenNote, onWritingRoom, onVersions }: { initialView: FundgrubeView; volume: string; setVolume: (value: string) => void; darkMode: boolean; setDarkMode: React.Dispatch<React.SetStateAction<boolean>>; notificationCount: number; hasNewFindings: boolean; findingsState: Record<string, 'new' | 'confirmed' | 'removed'>; setFindingsState: React.Dispatch<React.SetStateAction<Record<string, 'new' | 'confirmed' | 'removed'>>>; threadStatus: Record<string, string>; setThreadStatus: React.Dispatch<React.SetStateAction<Record<string, string>>>; notes: PrivateNote[]; activeBranch: ActiveBranch; brotherCreated: boolean; setActiveBranch: (branch: ActiveBranch) => void; onSave: () => void; onRemoveFinding: (id: string) => void; onOpenNote: (note: PrivateNote) => void; onWritingRoom: () => void; onVersions: () => void }) {
