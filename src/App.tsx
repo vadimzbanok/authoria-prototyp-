@@ -18,6 +18,24 @@ function selectionParts(text: string, textStart: number, selection: ManuscriptSe
   return <>{text.slice(0, start)}<mark className="highlighted">{text.slice(start, end)}</mark>{text.slice(end)}</>
 }
 
+function figuresInText(text: string) {
+  const figures: string[] = []
+  if (/\bKönig\b/.test(text)) figures.push('König Aldric')
+  if (/\bPrinz Edrik\b/.test(text)) figures.push('Prinz Edrik')
+  if (/\bTeo\b/.test(text)) figures.push('Teo')
+  if (/\bMira\b/.test(text)) figures.push('Mira')
+  return figures
+}
+
+function understoodText(text: string, intent: string | null, scope: string) {
+  if (!intent) return ''
+  let sentence = 'Du möchtest diese Stelle genauer betrachten.'
+  if (intent === 'Ich stecke fest') sentence = /König/.test(text) && /Prinz Edrik/.test(text) ? 'Dir fehlt ein Thronfolger: Der König ist tot, und Prinz Edrik ist schon in Kap. 4 gestorben.' : 'Du suchst Möglichkeiten, weil sich an dieser Stelle eine Frage öffnet.'
+  if (intent === 'Was habe ich vergessen?') sentence = 'Du möchtest offene Fäden und Figuren prüfen, die mit dieser Stelle verbunden sind.'
+  if (intent === 'Perspektive wechseln') sentence = 'Du möchtest die Szene aus der Sicht der Figuren betrachten, die an dieser Stelle vorkommen.'
+  return `${sentence} Ich schaue in: ${scope}.`
+}
+
 const panelLabels: Record<PanelState, string> = {
   input: 'Eingabe', loading: 'Lädt', result: 'Ergebnis', empty: 'Nichts gefunden', boundary: 'Grenzfall', clues: 'Spuren legen',
 }
@@ -30,10 +48,23 @@ function SourceLine({ sources }: { sources: { chapter: number; page: number }[] 
   return <button className="source">Quelle: {sources.map((source, i) => <span key={`${source.chapter}-${source.page}`}>Kap. {source.chapter}, S. {source.page}{i < sources.length - 1 ? ' · ' : ''}</span>)} ↗</button>
 }
 
+function ProjectSwitcher() {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false) }
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => { document.removeEventListener('mousedown', closeOnOutsideClick); document.removeEventListener('keydown', closeOnEscape) }
+  }, [])
+  return <div className="project-switcher" ref={menuRef}><button className="project-title" onClick={() => setOpen(current => !current)} aria-expanded={open} aria-haspopup="menu"><span>Der Sommer der Könige</span><ChevronDown size={15} /></button>{open && <div className="project-menu" role="menu"><strong>Deine Projekte</strong><button className="active" role="menuitem"><span><b>Der Sommer der Könige</b><small>18 Kapitel · heute bearbeitet</small></span><i>✓</i></button><button role="menuitem"><span><b>Das Lied der Salzwüste</b><small>7 Kapitel · vor 3 Wochen</small></span></button><button role="menuitem"><span><b>Nordlicht über Velmor</b><small>Idee · noch kein Kapitel</small></span></button><hr /><button className="menu-link" role="menuitem">Alle Projekte ansehen</button><button className="menu-link" role="menuitem">+ Neues Projekt</button></div>}</div>
+}
+
 export default function App() {
   const [panel, setPanel] = useState<PanelState | null>(null)
   const [scope, setScope] = useState('Kap. 1–18')
-  const [intent, setIntent] = useState('Ich stecke fest')
+  const [intent, setIntent] = useState<string | null>(null)
   const [editingAssumption, setEditingAssumption] = useState(false)
   const [assumptionText, setAssumptionText] = useState(assumption)
   const [showAlternatives, setShowAlternatives] = useState(false)
@@ -42,11 +73,15 @@ export default function App() {
   const [selectedLens, setSelectedLens] = useState('neutral')
   const [selectedClue, setSelectedClue] = useState<number | null>(null)
   const [branchSaved, setBranchSaved] = useState(false)
+  const [fundgrubeBadge, setFundgrubeBadge] = useState(0)
   const [page, setPage] = useState<Page>('schreibraum')
   const [manuscriptSelection, setManuscriptSelection] = useState<ManuscriptSelection | null>(initialManuscriptSelection)
   const manuscriptRef = useRef<HTMLElement>(null)
   const [activeChapter, setActiveChapter] = useState(18)
   const currentManuscript = chapterManuscripts[activeChapter]
+  const selectedText = manuscriptSelection?.text ?? ''
+  const selectedFigures = figuresInText(selectedText)
+  const understandingContextRef = useRef('')
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -66,7 +101,23 @@ export default function App() {
     return () => window.clearTimeout(timeout)
   }, [panel])
 
-  const openPanel = () => { setPanel('input'); setFeedback(null) }
+  useEffect(() => {
+    if (panel === 'result') setFundgrubeBadge(3)
+  }, [panel])
+
+  useEffect(() => {
+    if (scope.startsWith('Figur:') && !selectedFigures.some(figure => scope === `Figur: ${figure}`)) setScope('Kap. 1–18')
+  }, [scope, selectedText])
+
+  useEffect(() => {
+    const context = `${selectedText}::${intent ?? ''}::${scope}`
+    if (!editingAssumption && understandingContextRef.current !== context) {
+      setAssumptionText(understoodText(selectedText, intent, scope))
+      understandingContextRef.current = context
+    }
+  }, [selectedText, intent, scope, editingAssumption])
+
+  const openPanel = () => { setPanel('input'); setFeedback(null); setIntent(null); setScope('Kap. 1–18'); setEditingAssumption(false) }
   const act = (message: string, action: string) => setFeedback({ message, action })
   const undo = () => { setFeedback(null); setBranchSaved(false) }
   const exploreBranch = (branch: Branch) => {
@@ -96,18 +147,18 @@ export default function App() {
   }
 
   if (page === 'fundgrube') {
-    return <Fundgrube volume={volume} setVolume={setVolume} onWritingRoom={() => setPage('schreibraum')} onVersions={() => setPage('versionen')} />
+    return <Fundgrube volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} onWritingRoom={() => setPage('schreibraum')} onVersions={() => setPage('versionen')} />
   }
   if (page === 'versionen') {
-    return <Versions volume={volume} setVolume={setVolume} onWritingRoom={() => setPage('schreibraum')} onFundgrube={() => setPage('fundgrube')} />
+    return <Versions volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} onWritingRoom={() => setPage('schreibraum')} onFundgrube={() => setPage('fundgrube')} />
   }
 
   return (
     <main className={`app ${panel ? 'panel-open' : ''}`}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
-        <div className="project-title"><span>Der Sommer der Könige</span><ChevronDown size={15} /></div>
-        <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link" onClick={() => { setPanel(null); setPage('fundgrube') }}>Fundgrube <span className="new-dot">3</span></button><button className="nav-link" onClick={() => { setPanel(null); setPage('versionen') }}>Versionen & Zweige</button></nav>
+        <ProjectSwitcher />
+        <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link" onClick={() => { setPanel(null); setPage('fundgrube') }}>Fundgrube {fundgrubeBadge > 0 && <span className="new-dot">{fundgrubeBadge}</span>}</button><button className="nav-link" onClick={() => { setPanel(null); setPage('versionen') }}>Versionen & Zweige</button></nav>
         <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={e => setVolume(e.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
       </header>
 
@@ -131,8 +182,8 @@ export default function App() {
 
         {panel && <aside className="ai-panel" aria-label="Innehalten-Panel">
           <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'} <span>· Kap. {activeChapter}</span></h2></div><button className="icon-button" onClick={() => setPanel(null)} aria-label="Panel schließen"><X size={20} /></button></div>
-          {panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
-          {panel === 'input' && <InputPanel selectionText={manuscriptSelection?.text ?? 'Keine Stelle markiert'} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} onStart={() => setPanel('loading')} onBoundary={() => setPanel('boundary')} />}
+          {panel !== 'input' && panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
+          {panel === 'input' && <InputPanel selectionText={selectedText} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} onStart={() => setPanel('loading')} onBoundary={() => setPanel('boundary')} />}
           {panel === 'loading' && <LoadingPanel onCancel={() => setPanel('input')} />}
           {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} />}
           {panel === 'empty' && <EmptyPanel onClose={() => setPanel(null)} onExpand={() => { setScope('Ganzes Manuskript'); setPanel('loading') }} />}
@@ -147,7 +198,7 @@ export default function App() {
   )
 }
 
-function Versions({ volume, setVolume, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; onWritingRoom: () => void; onFundgrube: () => void }) {
+function Versions({ volume, setVolume, notificationCount, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; onWritingRoom: () => void; onFundgrube: () => void }) {
   const [activeBranch, setActiveBranch] = useState('brother')
   const [notice, setNotice] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
@@ -156,9 +207,9 @@ function Versions({ volume, setVolume, onWritingRoom, onFundgrube }: { volume: s
   return <main className="app versions-app">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
-      <div className="project-title"><span>Der Sommer der Könige</span><ChevronDown size={15} /></div>
+      <ProjectSwitcher />
       <span className="active-branch-pill">⌘ Zweig: Bruder⌄</span>
-      <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link" onClick={onFundgrube}>Fundgrube <span className="new-dot">3</span></button><button className="nav-link current">Versionen & Zweige</button></nav>
+      <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link" onClick={onFundgrube}>Fundgrube {notificationCount > 0 && <span className="new-dot">{notificationCount}</span>}</button><button className="nav-link current">Versionen & Zweige</button></nav>
       <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={event => setVolume(event.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
     </header>
     <div className="versions-layout">
@@ -171,7 +222,7 @@ function Versions({ volume, setVolume, onWritingRoom, onFundgrube }: { volume: s
   </main>
 }
 
-function Fundgrube({ volume, setVolume, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; onWritingRoom: () => void; onVersions: () => void }) {
+function Fundgrube({ volume, setVolume, notificationCount, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; notificationCount: number; onWritingRoom: () => void; onVersions: () => void }) {
   const [view, setView] = useState<FundgrubeView>('Übersicht')
   const [findingsState, setFindingsState] = useState<Record<string, 'new' | 'confirmed' | 'removed'>>({})
   const [threadStatus, setThreadStatus] = useState(() => Object.fromEntries(fundgrubeThreads.map(thread => [thread.id, thread.status])) as Record<string, string>)
@@ -184,8 +235,8 @@ function Fundgrube({ volume, setVolume, onWritingRoom, onVersions }: { volume: s
   return <main className="app fundgrube-app">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
-      <div className="project-title"><span>Der Sommer der Könige</span><ChevronDown size={15} /></div>
-      <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link current">Fundgrube {newCount > 0 && <span className="new-dot">{newCount}</span>}</button><button className="nav-link" onClick={onVersions}>Versionen & Zweige</button></nav>
+      <ProjectSwitcher />
+      <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link current">Fundgrube {notificationCount > 0 && <span className="new-dot">{newCount}</span>}</button><button className="nav-link" onClick={onVersions}>Versionen & Zweige</button></nav>
       <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={event => setVolume(event.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
     </header>
     <div className="fundgrube-layout">
@@ -216,8 +267,16 @@ function FundgrubeThreads({ statuses, onCycle }: { statuses: Record<string, stri
 
 function FundgrubeContradiction({ onDismiss }: { onDismiss: () => void }) { return <section className="contradiction-card"><div className="contradiction-title"><h2>Möglicher Widerspruch</h2><span><Sparkles size={11} /> KI-Hinweis</span></div><h3>{fundgrubeContradiction.title}</h3><p>Vielleicht Absicht. Du entscheidest.</p><button className="confirm">Zu den Stellen</button><button onClick={onDismiss}>Ist Absicht</button></section> }
 
-function InputPanel(props: { selectionText: string; scope: string; setScope: (value: string) => void; intent: string; setIntent: (value: string) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; onStart: () => void; onBoundary: () => void }) {
-  return <div className="panel-content input-panel"><div className="selected-text"><span>MARKIERTE STELLE</span><p>„{props.selectionText}“</p></div><section><h3>Wobei soll ich schauen?</h3><div className="chips">{['Kap. 1–18', 'nur dieses Kapitel', 'nur Figur: Mira'].map(value => <Chip key={value} active={props.scope === value} onClick={() => props.setScope(value)}>{value}</Chip>)}</div></section><section><h3>Was brauchst du gerade?</h3><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => props.setIntent(value)}>{value}</Chip>)}</div></section><section className="assumption"><div className="assumption-title"><span>Ich verstehe …</span><button onClick={() => props.setEditing(!props.editing)}>{props.editing ? 'Fertig' : 'Ändern'}</button></div>{props.editing ? <textarea value={props.assumptionText} onChange={event => props.setAssumptionText(event.target.value)} /> : <p>{props.assumptionText}</p>}</section><label className="optional-question">Eigene Frage stellen …<input placeholder="Optional" onChange={event => { if (event.target.value.toLowerCase().includes('schreib')) props.onBoundary() }} /></label><button className="primary-button" onClick={props.onStart}><Sparkles size={17} />Innehalten</button></div>
+function InputPanel(props: { selectionText: string; figureNames: string[]; scope: string; setScope: (value: string) => void; intent: string | null; setIntent: (value: string | null) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; onStart: () => void; onBoundary: () => void }) {
+  const [draft, setDraft] = useState(props.assumptionText)
+  useEffect(() => { if (!props.editing) setDraft(props.assumptionText) }, [props.assumptionText, props.editing])
+  const intentHelp: Record<string, string> = {
+    'Ich stecke fest': 'Ich zeige dir Möglichkeiten, wie es weitergehen könnte.',
+    'Was habe ich vergessen?': 'Ich suche offene Fäden und vergessene Figuren.',
+    'Perspektive wechseln': 'Ich zeige dir die Szene aus der Sicht einer Figur.',
+  }
+  const scopes = ['Kap. 1–18', 'nur dieses Kapitel', ...props.figureNames.map(name => `Figur: ${name}`)]
+  return <div className="panel-content input-panel"><section className="selected-text"><div className="input-section-heading"><i>1</i><h3>Deine Stelle</h3></div><p>{props.selectionText ? `„${props.selectionText}“` : 'Markiere eine Stelle im Text.'}</p></section><section><div className="input-section-heading"><i>2</i><h3>Was brauchst du?</h3></div><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => props.setIntent(value)}>{value}</Chip>)}</div><p className="input-hint">{props.intent ? intentHelp[props.intent] : 'Wähle zuerst, wobei ich dir helfen soll.'}</p></section><section><div className="input-section-heading"><i>3</i><h3>Wo soll ich suchen?</h3></div><div className="chips">{scopes.map(value => <Chip key={value} active={props.scope === value} onClick={() => props.setScope(value)}>{value}</Chip>)}</div><p className="input-hint">Figuren-Chips kommen aus deiner markierten Stelle.</p></section>{props.intent && <section><div className="input-section-heading"><i>4</i><h3>So verstehe ich dich</h3></div><div className="assumption"><div className="assumption-title"><span>KI</span>{!props.editing && <button onClick={() => { setDraft(props.assumptionText); props.setEditing(true) }}>Korrigieren</button>}</div>{props.editing ? <><textarea aria-label="KI-Verständnis korrigieren" value={draft} onChange={event => setDraft(event.target.value)} /><div className="assumption-actions"><button onClick={() => { props.setAssumptionText(draft); props.setEditing(false) }}>Bestätigen</button><button onClick={() => { setDraft(props.assumptionText); props.setEditing(false) }}>Abbrechen</button></div></> : <p>{props.assumptionText}</p>}<label className="optional-question">Eigene Frage (optional)<input placeholder="Optional" onChange={event => { if (event.target.value.toLowerCase().includes('schreib')) props.onBoundary() }} /></label></div></section>}<button className="primary-button" disabled={!props.intent} onClick={props.onStart}><Sparkles size={17} />Innehalten</button></div>
 }
 
 function LoadingPanel({ onCancel }: { onCancel: () => void }) { return <div className="panel-content loading"><div className="loading-orbit"><span></span><Sparkles size={23} /></div><h3>Ich sehe mir deine Spuren an</h3><p>Ich prüfe nur den gewählten Bereich und ändere nichts an deinem Text.</p><ul>{loadingSteps.map((step, index) => <li key={step} className={index < 2 ? 'done' : 'working'}><span>{index < 2 ? '✓' : '…'}</span>{step}</li>)}</ul><button className="secondary-button" onClick={onCancel}>Abbrechen</button></div> }
