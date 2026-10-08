@@ -126,9 +126,9 @@ export const loadingSteps = [
 ]
 
 export const fundgrubeFindings = [
-  { id: 'velmor', type: 'Figur', title: 'Der Gesandte aus Velmor', source: 'Kap. 17, S. 288 · 1 Erwähnung' },
-  { id: 'nordhof', type: 'Ort', title: 'Der Nordhof', source: 'Kap. 18, S. 303 · 2 Erwähnungen' },
-  { id: 'siegel', type: 'Faden', title: '„Das andere Siegel“', source: 'Kap. 11, S. 190 · zuletzt Kap. 16 ↗' },
+  { id: 'brother', type: 'Möglichkeit', title: 'Ein Bruder existiert', source: 'Kap. 2 bietet einen Anknüpfungspunkt.' },
+  { id: 'mira', type: 'Möglichkeit', title: 'Mira beansprucht den Thron', source: 'Passt zu ihrem Schweigen in Kap. 7.' },
+  { id: 'council', type: 'Möglichkeit', title: 'Der Rat regiert', source: 'Dafür wären neue Figuren nötig.' },
 ]
 
 export const fundgrubeFigures = [

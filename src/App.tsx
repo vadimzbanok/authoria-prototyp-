@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, Lightbulb, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
 import { alternativeBranches, assumption, branches, chapterManuscripts, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
 
@@ -6,6 +6,7 @@ type PanelState = 'input' | 'loading' | 'result' | 'empty' | 'boundary' | 'clues
 type Feedback = { message: string; action: string } | null
 type Page = 'schreibraum' | 'fundgrube' | 'versionen'
 type FundgrubeView = 'Übersicht' | 'Figuren' | 'Orte' | 'Offene Fäden' | 'Widersprüche'
+type FundgrubeFilter = 'all' | 'new' | 'confirmed'
 type ManuscriptSelection = { start: number; end: number; text: string }
 type SaveState = 'saving' | 'saved'
 
@@ -94,6 +95,7 @@ export default function App() {
   const [activeBranch, setActiveBranch] = useState<'main' | 'brother'>('main')
   const [brotherCreated, setBrotherCreated] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>('saved')
+  const [panelWidth, setPanelWidth] = useState(460)
   const [page, setPage] = useState<Page>('schreibraum')
   const [manuscriptSelection, setManuscriptSelection] = useState<ManuscriptSelection | null>(initialManuscriptSelection)
   const manuscriptRef = useRef<HTMLElement>(null)
@@ -151,6 +153,20 @@ export default function App() {
     setActiveBranch(branch)
     markImportantChange()
   }
+  const updatePanelWidth = (nextWidth: number) => {
+    const maxWidth = Math.min(680, Math.max(380, window.innerWidth - 620))
+    setPanelWidth(Math.min(Math.max(380, nextWidth), maxWidth))
+  }
+  const startPanelResize = (startX: number) => {
+    const startWidth = panelWidth
+    const onMove = (event: PointerEvent) => updatePanelWidth(startWidth + startX - event.clientX)
+    const stop = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', stop)
+  }
   const undo = () => {
     if (feedback) {
       setFeedback(null)
@@ -199,7 +215,7 @@ export default function App() {
   }
 
   return (
-    <main className={`app ${panel ? 'panel-open' : ''}`}>
+    <main className={`app ${panel ? 'panel-open' : ''}`} style={{ '--panel-width': `${panelWidth}px` } as CSSProperties}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
         <ProjectSwitcher /><BranchSwitcher activeBranch={activeBranch} brotherCreated={brotherCreated} onChange={changeBranch} />
@@ -226,8 +242,8 @@ export default function App() {
           <button className="pause-button" onClick={openPanel}><span className="pause-icon">Ⅱ</span> Innehalten</button>
         </section>
 
-        {panel && <aside className="ai-panel" aria-label="Innehalten-Panel">
-          <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'} <span>· Kap. {activeChapter}</span></h2></div><button className="icon-button" onClick={() => setPanel(null)} aria-label="Panel schließen"><X size={20} /></button></div>
+        {panel && <aside className="ai-panel" aria-label="Innehalten-Panel"><button className="panel-resizer" aria-label="Breite des Innehalten-Panels anpassen" onPointerDown={event => { event.preventDefault(); startPanelResize(event.clientX) }} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); updatePanelWidth(panelWidth + (event.key === 'ArrowLeft' ? 24 : -24)) } }} />
+          <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'}</h2></div><button className="icon-button" onClick={() => setPanel(null)} aria-label="Panel schließen"><X size={20} /></button></div>
           {panel !== 'input' && panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
           {panel === 'input' && <InputPanel selectionText={selectedText} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} onSave={markImportantChange} onStart={() => setPanel('loading')} />}
           {panel === 'loading' && <LoadingPanel onCancel={() => setPanel('input')} />}
@@ -267,9 +283,11 @@ function Versions({ volume, setVolume, notificationCount, activeBranch, brotherC
 
 function Fundgrube({ volume, setVolume, notificationCount, findingsState, setFindingsState, threadStatus, setThreadStatus, activeBranch, brotherCreated, setActiveBranch, onSave, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; notificationCount: number; findingsState: Record<string, 'new' | 'confirmed' | 'removed'>; setFindingsState: React.Dispatch<React.SetStateAction<Record<string, 'new' | 'confirmed' | 'removed'>>>; threadStatus: Record<string, string>; setThreadStatus: React.Dispatch<React.SetStateAction<Record<string, string>>>; activeBranch: 'main' | 'brother'; brotherCreated: boolean; setActiveBranch: (branch: 'main' | 'brother') => void; onSave: () => void; onWritingRoom: () => void; onVersions: () => void }) {
   const [view, setView] = useState<FundgrubeView>('Übersicht')
+  const [filter, setFilter] = useState<FundgrubeFilter>('all')
   const [contradictionVisible, setContradictionVisible] = useState(true)
   const visibleFindings = fundgrubeFindings.filter(finding => findingsState[finding.id] !== 'removed')
   const newCount = fundgrubeFindings.filter(finding => !findingsState[finding.id] || findingsState[finding.id] === 'new').length
+  const filteredFindings = visibleFindings.filter(finding => filter === 'all' || (filter === 'new' ? !findingsState[finding.id] || findingsState[finding.id] === 'new' : findingsState[finding.id] === 'confirmed'))
   const cycleStatus = (id: string) => { setThreadStatus(current => ({ ...current, [id]: current[id] === 'offen' ? 'bewusst offen' : current[id] === 'bewusst offen' ? 'loslassen' : 'offen' })); onSave() }
   const show = (name: FundgrubeView) => view === 'Übersicht' || view === name
 
@@ -283,9 +301,9 @@ function Fundgrube({ volume, setVolume, notificationCount, findingsState, setFin
     <div className="fundgrube-layout">
       <aside className="fundgrube-sidebar"><div className="side-title"><span>FUNDGRUBE</span></div>{(['Übersicht', 'Figuren', 'Orte', 'Offene Fäden', 'Widersprüche'] as FundgrubeView[]).map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{item}<span>{item === 'Figuren' ? 6 : item === 'Orte' ? 4 : item === 'Offene Fäden' ? 5 : item === 'Widersprüche' ? 1 : ''}</span></button>)}<div className="gathered-note">Still gesammelt aus Kap. 1–18.<br />Nichts ändert deinen Text.</div></aside>
       <section className="fundgrube-content">
-        <div className="fundgrube-heading"><div><div className="eyebrow ai-label"><Sparkles size={13} /> STILL GESAMMELT</div><h1>{view}</h1><p>{view === 'Übersicht' ? <>Was deine Geschichte bisher enthält · bezieht sich auf <strong>Kap. 1–18</strong></> : 'Was deine Geschichte bisher enthält'}</p></div>{view === 'Übersicht' && <div className="fund-filter"><Chip active>Alle</Chip><Chip>Neu · {newCount}</Chip><Chip>Bestätigt</Chip></div>}</div>
-        {view === 'Übersicht' && <section className="new-findings"><div className="new-findings-title"><strong>{newCount} neue Fundstücke</strong><span>Du entscheidest, was bleibt.</span></div><div className="new-finding-grid">{visibleFindings.map(finding => <article className="new-finding" key={finding.id}><div className="finding-top"><span>{finding.type}</span>{findingsState[finding.id] === 'confirmed' ? <em>bestätigt</em> : <em><Sparkles size={11} /> von KI gefunden</em>}</div><h3>{finding.title}</h3><button className="fund-source">Quelle: {finding.source}</button><div><button className="confirm" onClick={() => { setFindingsState(current => ({ ...current, [finding.id]: 'confirmed' })); onSave() }}>Bestätigen</button><button>Bearbeiten</button><button onClick={() => { setFindingsState(current => ({ ...current, [finding.id]: 'removed' })); onSave() }}>Entfernen</button></div></article>)}</div></section>}
-        <div className="fundgrube-columns">
+        <div className="fundgrube-heading"><div><div className="eyebrow ai-label"><Sparkles size={13} /> STILL GESAMMELT</div><h1>{view}</h1><p>{view === 'Übersicht' ? <>Was deine Geschichte bisher enthält · bezieht sich auf <strong>Kap. 1–18</strong></> : 'Was deine Geschichte bisher enthält'}</p></div>{view === 'Übersicht' && <div className="fund-filter"><Chip active={filter === 'all'} onClick={() => setFilter('all')}>Alle</Chip><Chip active={filter === 'new'} onClick={() => setFilter('new')}>Neu · {newCount}</Chip><Chip active={filter === 'confirmed'} onClick={() => setFilter('confirmed')}>Bestätigt</Chip></div>}</div>
+        {view === 'Übersicht' && <section className="new-findings"><div className="new-findings-title"><strong>{filter === 'confirmed' ? 'Bestätigte Fundstücke' : `${filter === 'new' ? newCount : filteredFindings.length} ${filter === 'new' ? 'neue Fundstücke' : 'Fundstücke'}`}</strong><span>Du entscheidest, was bleibt.</span></div><div className="new-finding-grid">{filteredFindings.map(finding => <article className="new-finding" key={finding.id}><div className="finding-top"><span>{finding.type}</span>{findingsState[finding.id] === 'confirmed' ? <em>bestätigt</em> : <em><Sparkles size={11} /> von KI gefunden</em>}</div><h3>{finding.title}</h3><button className="fund-source">Quelle: {finding.source}</button><div><button className="confirm" onClick={() => { setFindingsState(current => ({ ...current, [finding.id]: 'confirmed' })); onSave() }}>Bestätigen</button><button>Bearbeiten</button><button onClick={() => { setFindingsState(current => ({ ...current, [finding.id]: 'removed' })); onSave() }}>Entfernen</button></div></article>)}</div></section>}
+        {filter === 'all' && <div className="fundgrube-columns">
           <div>
             {show('Figuren') && <FundgrubeFigures />}
             {show('Orte') && <FundgrubePlaces />}
@@ -294,7 +312,7 @@ function Fundgrube({ volume, setVolume, notificationCount, findingsState, setFin
             {show('Offene Fäden') && <FundgrubeThreads statuses={threadStatus} onCycle={cycleStatus} />}
             {show('Widersprüche') && contradictionVisible && <FundgrubeContradiction onDismiss={() => setContradictionVisible(false)} />}
           </div>
-        </div>
+        </div>}
       </section>
     </div>
   </main>
