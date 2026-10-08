@@ -7,6 +7,7 @@ type Feedback = { message: string; action: string } | null
 type Page = 'schreibraum' | 'fundgrube' | 'versionen'
 type FundgrubeView = 'Übersicht' | 'Figuren' | 'Orte' | 'Offene Fäden' | 'Widersprüche'
 type ManuscriptSelection = { start: number; end: number; text: string }
+type SaveState = 'saving' | 'saved'
 
 const initialSelectionStart = manuscript.paragraphs.slice(0, 2).join('').length
 const initialManuscriptSelection = { start: initialSelectionStart, end: initialSelectionStart + manuscript.paragraphs[2].length, text: manuscript.selection }
@@ -36,16 +37,12 @@ function understoodText(text: string, intent: string | null, scope: string) {
   return `${sentence} Ich schaue in: ${scope}.`
 }
 
-const panelLabels: Record<PanelState, string> = {
-  input: 'Eingabe', loading: 'Lädt', result: 'Ergebnis', empty: 'Nichts gefunden', boundary: 'Grenzfall', clues: 'Spuren legen',
-}
-
 function Chip({ active, children, onClick }: { active?: boolean; children: React.ReactNode; onClick?: () => void }) {
   return <button className={`chip ${active ? 'active' : ''}`} onClick={onClick}>{children}</button>
 }
 
-function SourceLine({ sources }: { sources: { chapter: number; page: number }[] }) {
-  return <button className="source">Quelle: {sources.map((source, i) => <span key={`${source.chapter}-${source.page}`}>Kap. {source.chapter}, S. {source.page}{i < sources.length - 1 ? ' · ' : ''}</span>)} ↗</button>
+function SourceLine({ sources, onOpenChapter }: { sources: { chapter: number; page: number }[]; onOpenChapter: (chapter: number) => void }) {
+  return <p className="source">Quelle: {sources.map((source, i) => <span key={`${source.chapter}-${source.page}`}>{source.chapter >= 15 && source.chapter <= 18 ? <button className="source-link" onClick={() => onOpenChapter(source.chapter)}>Kap. {source.chapter}, S. {source.page}</button> : <>Kap. {source.chapter}, S. {source.page}</>}{i < sources.length - 1 ? ' · ' : ''}</span>)} ↗</p>
 }
 
 function ProjectSwitcher() {
@@ -61,6 +58,24 @@ function ProjectSwitcher() {
   return <div className="project-switcher" ref={menuRef}><button className="project-title" onClick={() => setOpen(current => !current)} aria-expanded={open} aria-haspopup="menu"><span>Der Sommer der Könige</span><ChevronDown size={15} /></button>{open && <div className="project-menu" role="menu"><strong>Deine Projekte</strong><button className="active" role="menuitem"><span><b>Der Sommer der Könige</b><small>18 Kapitel · heute bearbeitet</small></span><i>✓</i></button><button role="menuitem"><span><b>Das Lied der Salzwüste</b><small>7 Kapitel · vor 3 Wochen</small></span></button><button role="menuitem"><span><b>Nordlicht über Velmor</b><small>Idee · noch kein Kapitel</small></span></button><hr /><button className="menu-link" role="menuitem">Alle Projekte ansehen</button><button className="menu-link" role="menuitem">+ Neues Projekt</button></div>}</div>
 }
 
+function BranchSwitcher({ activeBranch, brotherCreated, onChange }: { activeBranch: 'main' | 'brother'; brotherCreated: boolean; onChange: (branch: 'main' | 'brother') => void }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false) }
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => { document.removeEventListener('mousedown', closeOnOutsideClick); document.removeEventListener('keydown', closeOnEscape) }
+  }, [])
+  const choose = (branch: 'main' | 'brother') => { onChange(branch); setOpen(false) }
+  return <div className="branch-switcher" ref={menuRef}><button className={`active-branch-pill ${activeBranch}`} onClick={() => setOpen(current => !current)} aria-expanded={open} aria-haspopup="menu">⌘ {activeBranch === 'main' ? 'Hauptlinie' : 'Zweig: Bruder'}⌄</button>{open && <div className="branch-menu" role="menu"><button className={activeBranch === 'main' ? 'active' : ''} onClick={() => choose('main')} role="menuitem">Hauptlinie</button>{brotherCreated && <button className={activeBranch === 'brother' ? 'active' : ''} onClick={() => choose('brother')} role="menuitem">Zweig „Bruder“</button>}</div>}</div>
+}
+
+function SaveStatus({ state }: { state: SaveState }) {
+  return <div className={`save-status ${state}`} role="status" aria-live="polite">{state === 'saving' ? <><i aria-hidden="true"></i>Speichert …</> : <><b aria-hidden="true">✓</b>Gespeichert</>}</div>
+}
+
 export default function App() {
   const [panel, setPanel] = useState<PanelState | null>(null)
   const [scope, setScope] = useState('Kap. 1–18')
@@ -73,7 +88,12 @@ export default function App() {
   const [selectedLens, setSelectedLens] = useState('neutral')
   const [selectedClue, setSelectedClue] = useState<number | null>(null)
   const [branchSaved, setBranchSaved] = useState(false)
-  const [fundgrubeBadge, setFundgrubeBadge] = useState(0)
+  const [findingsState, setFindingsState] = useState<Record<string, 'new' | 'confirmed' | 'removed'>>({})
+  const [hasFundgrubeUpdates, setHasFundgrubeUpdates] = useState(false)
+  const [threadStatus, setThreadStatus] = useState(() => Object.fromEntries(fundgrubeThreads.map(thread => [thread.id, thread.status])) as Record<string, string>)
+  const [activeBranch, setActiveBranch] = useState<'main' | 'brother'>('main')
+  const [brotherCreated, setBrotherCreated] = useState(false)
+  const [saveState, setSaveState] = useState<SaveState>('saved')
   const [page, setPage] = useState<Page>('schreibraum')
   const [manuscriptSelection, setManuscriptSelection] = useState<ManuscriptSelection | null>(initialManuscriptSelection)
   const manuscriptRef = useRef<HTMLElement>(null)
@@ -82,13 +102,11 @@ export default function App() {
   const selectedText = manuscriptSelection?.text ?? ''
   const selectedFigures = figuresInText(selectedText)
   const understandingContextRef = useRef('')
+  const saveTimerRef = useRef<number | null>(null)
+  const fundgrubeBadge = hasFundgrubeUpdates ? fundgrubeFindings.filter(finding => findingsState[finding.id] !== 'confirmed' && findingsState[finding.id] !== 'removed').length : 0
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === 'd') {
-        const states: PanelState[] = ['input', 'loading', 'result', 'empty', 'boundary', 'clues']
-        setPanel(current => states[(states.indexOf(current ?? 'input') + 1) % states.length])
-      }
       if (event.key === 'Escape') setManuscriptSelection(null)
     }
     window.addEventListener('keydown', handler)
@@ -101,8 +119,12 @@ export default function App() {
     return () => window.clearTimeout(timeout)
   }, [panel])
 
+  useEffect(() => () => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+  }, [])
+
   useEffect(() => {
-    if (panel === 'result') setFundgrubeBadge(3)
+    if (panel === 'result') setHasFundgrubeUpdates(true)
   }, [panel])
 
   useEffect(() => {
@@ -119,10 +141,33 @@ export default function App() {
 
   const openPanel = () => { setPanel('input'); setFeedback(null); setIntent(null); setScope('Kap. 1–18'); setEditingAssumption(false) }
   const act = (message: string, action: string) => setFeedback({ message, action })
-  const undo = () => { setFeedback(null); setBranchSaved(false) }
+  const markImportantChange = () => {
+    setSaveState('saving')
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => setSaveState('saved'), 900)
+  }
+  const changeBranch = (branch: 'main' | 'brother') => {
+    if (branch === activeBranch) return
+    setActiveBranch(branch)
+    markImportantChange()
+  }
+  const undo = () => {
+    if (feedback) {
+      setFeedback(null)
+      setBranchSaved(false)
+      return
+    }
+    if (panel === 'result') setPanel('input')
+  }
   const exploreBranch = (branch: Branch) => {
-    if (branch.id === 'brother') { setPanel('clues'); setFeedback(null) }
+    if (branch.id === 'brother') { setBrotherCreated(true); setActiveBranch('brother'); markImportantChange(); setPanel('clues'); setFeedback({ action: 'Zweig „Bruder“', message: 'Neuer Zweig „Bruder“ angelegt · Original bleibt' }) }
     else act(`„${branch.title}“ bleibt als Möglichkeit sichtbar.`, 'Gemerkte Möglichkeit')
+  }
+  const openSourceChapter = (chapter: number) => {
+    setActiveChapter(chapter)
+    setManuscriptSelection(chapter === 18 ? initialManuscriptSelection : null)
+    setPanel(null)
+    setPage('schreibraum')
   }
   const captureSelection = () => {
     const root = manuscriptRef.current
@@ -147,17 +192,17 @@ export default function App() {
   }
 
   if (page === 'fundgrube') {
-    return <Fundgrube volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} onWritingRoom={() => setPage('schreibraum')} onVersions={() => setPage('versionen')} />
+    return <Fundgrube volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} findingsState={findingsState} setFindingsState={setFindingsState} threadStatus={threadStatus} setThreadStatus={setThreadStatus} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onWritingRoom={() => setPage('schreibraum')} onVersions={() => setPage('versionen')} />
   }
   if (page === 'versionen') {
-    return <Versions volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} onWritingRoom={() => setPage('schreibraum')} onFundgrube={() => setPage('fundgrube')} />
+    return <Versions volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onWritingRoom={() => setPage('schreibraum')} onFundgrube={() => setPage('fundgrube')} />
   }
 
   return (
     <main className={`app ${panel ? 'panel-open' : ''}`}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
-        <ProjectSwitcher />
+        <ProjectSwitcher /><BranchSwitcher activeBranch={activeBranch} brotherCreated={brotherCreated} onChange={changeBranch} />
         <nav aria-label="Projektbereiche"><button className="nav-link current">Schreibraum</button><button className="nav-link" onClick={() => { setPanel(null); setPage('fundgrube') }}>Fundgrube {fundgrubeBadge > 0 && <span className="new-dot">{fundgrubeBadge}</span>}</button><button className="nav-link" onClick={() => { setPanel(null); setPage('versionen') }}>Versionen & Zweige</button></nav>
         <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={e => setVolume(e.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
       </header>
@@ -171,7 +216,8 @@ export default function App() {
         </aside>
 
         <section className="editor" aria-label="Manuskript" onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
-          <div className="editor-meta"><span>Kapitel {activeChapter}</span><span>·</span><span>Seite {currentManuscript.page}</span><span className="saved">Gespeichert</span></div>
+          <div className="editor-utility-row"><div className="editor-selection-hint" role="note"><span>Tipp</span> Text markieren: Mit der Maus über eine Stelle ziehen.</div><SaveStatus state={saveState} /></div>
+          <div className="editor-meta"><span>Kapitel {activeChapter}</span><span>·</span><span>Seite {currentManuscript.page}</span></div>
           <article className="manuscript" ref={manuscriptRef} onMouseUp={captureSelection} onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
             <h1>{currentManuscript.title}</h1>
             {(() => { let offset = 0; return currentManuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; return <div key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}</p>{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
@@ -183,38 +229,35 @@ export default function App() {
         {panel && <aside className="ai-panel" aria-label="Innehalten-Panel">
           <div className="panel-header"><div><div className="eyebrow ai-label"><Sparkles size={13} /> KI-IMPULS</div><h2>{panel === 'clues' ? 'Spuren legen' : 'Innehalten'} <span>· Kap. {activeChapter}</span></h2></div><button className="icon-button" onClick={() => setPanel(null)} aria-label="Panel schließen"><X size={20} /></button></div>
           {panel !== 'input' && panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
-          {panel === 'input' && <InputPanel selectionText={selectedText} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} onStart={() => setPanel('loading')} onBoundary={() => setPanel('boundary')} />}
+          {panel === 'input' && <InputPanel selectionText={selectedText} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} onSave={markImportantChange} onStart={() => setPanel('loading')} />}
           {panel === 'loading' && <LoadingPanel onCancel={() => setPanel('input')} />}
-          {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} />}
+          {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} onFundgrube={() => { setPanel(null); setPage('fundgrube') }} onOpenChapter={openSourceChapter} />}
           {panel === 'empty' && <EmptyPanel onClose={() => setPanel(null)} onExpand={() => { setScope('Ganzes Manuskript'); setPanel('loading') }} />}
           {panel === 'boundary' && <BoundaryPanel onQuestions={() => { setIntent('Was habe ich vergessen?'); setPanel('loading') }} onPerspective={() => { setIntent('Perspektive wechseln'); setPanel('input') }} />}
-          {panel === 'clues' && <CluesPanel selected={selectedClue} setSelected={setSelectedClue} onSave={() => { setBranchSaved(true); setFeedback({ message: 'Der Zweig ist gesichert. Das Original wurde nicht verändert.', action: 'Zweig „Bruder“' }); setPanel(null) }} />}
-          {panel !== 'clues' && <div className="panel-footer"><button onClick={undo} disabled={!feedback}><RotateCcw size={15} />Rückgängig</button><button onClick={() => setPanel(null)}>Panel schließen</button></div>}
+          {panel === 'clues' && <CluesPanel selected={selectedClue} setSelected={setSelectedClue} onSave={() => { setBranchSaved(true); markImportantChange(); setFeedback({ message: 'Der Zweig ist gesichert. Das Original wurde nicht verändert.', action: 'Zweig „Bruder“' }); setPanel(null) }} />}
+          {panel !== 'clues' && <div className="panel-footer"><button onClick={undo} disabled={!feedback && panel !== 'result'}><RotateCcw size={15} />Rückgängig</button><button onClick={() => setPanel(null)}>Panel schließen</button></div>}
           {feedback && <div className="toast"><span>✓</span><div><strong>{feedback.action}</strong><p>{feedback.message}</p></div><button onClick={undo} aria-label="Rückmeldung schließen"><X size={15} /></button></div>}
-          <div className="demo-hint">Demo: Taste <kbd>D</kbd> wechselt zu „{panelLabels[panel]}“</div>
         </aside>}
       </div>
     </main>
   )
 }
 
-function Versions({ volume, setVolume, notificationCount, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; onWritingRoom: () => void; onFundgrube: () => void }) {
-  const [activeBranch, setActiveBranch] = useState('brother')
+function Versions({ volume, setVolume, notificationCount, activeBranch, brotherCreated, setActiveBranch, onSave, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; activeBranch: 'main' | 'brother'; brotherCreated: boolean; setActiveBranch: (branch: 'main' | 'brother') => void; onSave: () => void; onWritingRoom: () => void; onFundgrube: () => void }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
-  const active = versionsBranches.find(branch => branch.id === activeBranch) ?? versionsBranches[1]
-  const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(null), 2600) }
+  const active = versionsBranches.find(branch => branch.id === activeBranch) ?? versionsBranches[0]
+  const notify = (message: string) => { onSave(); setNotice(message); window.setTimeout(() => setNotice(null), 2600) }
   return <main className="app versions-app">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
-      <ProjectSwitcher />
-      <span className="active-branch-pill">⌘ Zweig: Bruder⌄</span>
+      <ProjectSwitcher /><BranchSwitcher activeBranch={activeBranch} brotherCreated={brotherCreated} onChange={setActiveBranch} />
       <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link" onClick={onFundgrube}>Fundgrube {notificationCount > 0 && <span className="new-dot">{notificationCount}</span>}</button><button className="nav-link current">Versionen & Zweige</button></nav>
       <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={event => setVolume(event.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
     </header>
     <div className="versions-layout">
-      <aside className="versions-sidebar"><div className="side-title"><span>ZWEIGE</span></div>{versionsBranches.map(branch => <button key={branch.id} className={activeBranch === branch.id ? 'active' : ''} onClick={() => setActiveBranch(branch.id)}><i className={branch.id === 'brother' ? 'green' : ''} /><span><strong>{branch.name}</strong><small>{branch.detail}</small></span></button>)}<div className="versions-note">Nichts geht verloren. Jede Änderung wird automatisch gesichert, das Original bleibt immer erhalten.</div></aside>
-      <section className="versions-content"><div className="versions-heading"><div className="eyebrow author-label">NICHTS GEHT VERLOREN</div><h1>Versionen & Zweige</h1><p>Probier Ideen aus, ohne etwas zu riskieren. Der Zweig „Bruder“ ist gerade aktiv.</p></div>
+      <aside className="versions-sidebar"><div className="side-title"><span>ZWEIGE</span></div>{versionsBranches.map(branch => <button key={branch.id} className={activeBranch === branch.id ? 'active' : ''} onClick={() => { if (branch.id === 'main' || (branch.id === 'brother' && brotherCreated)) setActiveBranch(branch.id) }}><i className={branch.id === 'brother' ? 'green' : ''} /><span><strong>{branch.name}</strong><small>{branch.detail}</small></span></button>)}<div className="versions-note">Nichts geht verloren. Jede Änderung wird automatisch gesichert, das Original bleibt immer erhalten.</div></aside>
+      <section className="versions-content"><div className="versions-heading"><div className="eyebrow author-label">NICHTS GEHT VERLOREN</div><h1>Versionen & Zweige</h1><p>Probier Ideen aus, ohne etwas zu riskieren. {activeBranch === 'brother' ? 'Der Zweig „Bruder“ ist gerade aktiv.' : 'Die Hauptlinie ist gerade aktiv.'}</p></div>
         <section className="comparison-card"><div className="comparison-title"><strong>Zweig-Vergleich · Kap. 2 „Zwei Brüder im Schnee“</strong><span><Sparkles size={11} /> Unterschiede markiert</span></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte.</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte. <mark>„Wir waren zwei“, sagte er einmal, und schwieg danach so lange, dass niemand nachzufragen wagte.</mark></p><small>+1 Satz · von dir geschrieben</small></article></div><div className="compare-actions"><button className="author-primary" onClick={() => notify('In die Hauptlinie übernommen')}>Zweig übernehmen</button><button>Im Zweig weiterschreiben</button><button onClick={() => setConfirmDiscard(true)}>Zweig verwerfen</button></div>{confirmDiscard && <div className="discard-confirm"><span>Wirklich verwerfen? Das Original bleibt erhalten.</span><button onClick={() => { setConfirmDiscard(false); notify('Zweig verworfen') }}>Verwerfen</button><button onClick={() => setConfirmDiscard(false)}>Abbrechen</button></div>}</section>
         <div className="versions-columns"><section className="history"><div className="history-title"><h2>Verlauf</h2><span>automatisch gesichert</span></div><div className="history-card">{versionHistory.map(item => <article key={item.title}><i className={item.tone} /><div><h3>{item.title}</h3><p>{item.detail}</p></div><span className={item.tone === 'author' || item.tone === 'branch' ? 'branch-badge' : 'main-badge'}>{item.branch}</span><button onClick={() => notify('Version wiederhergestellt')}>Wiederherstellen</button></article>)}</div></section><aside><section className="branch-summary"><h2>{active.name}</h2><p>Entstanden aus:</p><strong>Innehalten · Kap. 18 · „Ein Bruder existiert“</strong><p>Spuren gelegt: 2 von 5 Stellen</p><div className="branch-progress"><i /></div><button>Weitere Spuren legen ↗</button></section><section className="saved-info"><h2>Was gesichert wird</h2><ul><li>jede Änderung, automatisch</li><li>das Original bleibt immer erhalten</li><li>Zweige übernimmt nur du</li></ul><small>KI · automatisieren: sichert und markiert. Entscheiden: nur du.</small></section></aside></div>
       </section>
@@ -222,20 +265,18 @@ function Versions({ volume, setVolume, notificationCount, onWritingRoom, onFundg
   </main>
 }
 
-function Fundgrube({ volume, setVolume, notificationCount, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; notificationCount: number; onWritingRoom: () => void; onVersions: () => void }) {
+function Fundgrube({ volume, setVolume, notificationCount, findingsState, setFindingsState, threadStatus, setThreadStatus, activeBranch, brotherCreated, setActiveBranch, onSave, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; notificationCount: number; findingsState: Record<string, 'new' | 'confirmed' | 'removed'>; setFindingsState: React.Dispatch<React.SetStateAction<Record<string, 'new' | 'confirmed' | 'removed'>>>; threadStatus: Record<string, string>; setThreadStatus: React.Dispatch<React.SetStateAction<Record<string, string>>>; activeBranch: 'main' | 'brother'; brotherCreated: boolean; setActiveBranch: (branch: 'main' | 'brother') => void; onSave: () => void; onWritingRoom: () => void; onVersions: () => void }) {
   const [view, setView] = useState<FundgrubeView>('Übersicht')
-  const [findingsState, setFindingsState] = useState<Record<string, 'new' | 'confirmed' | 'removed'>>({})
-  const [threadStatus, setThreadStatus] = useState(() => Object.fromEntries(fundgrubeThreads.map(thread => [thread.id, thread.status])) as Record<string, string>)
   const [contradictionVisible, setContradictionVisible] = useState(true)
   const visibleFindings = fundgrubeFindings.filter(finding => findingsState[finding.id] !== 'removed')
   const newCount = fundgrubeFindings.filter(finding => !findingsState[finding.id] || findingsState[finding.id] === 'new').length
-  const cycleStatus = (id: string) => setThreadStatus(current => ({ ...current, [id]: current[id] === 'offen' ? 'bewusst offen' : current[id] === 'bewusst offen' ? 'loslassen' : 'offen' }))
+  const cycleStatus = (id: string) => { setThreadStatus(current => ({ ...current, [id]: current[id] === 'offen' ? 'bewusst offen' : current[id] === 'bewusst offen' ? 'loslassen' : 'offen' })); onSave() }
   const show = (name: FundgrubeView) => view === 'Übersicht' || view === name
 
   return <main className="app fundgrube-app">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">A</span><span>authoria</span></div>
-      <ProjectSwitcher />
+      <ProjectSwitcher /><BranchSwitcher activeBranch={activeBranch} brotherCreated={brotherCreated} onChange={setActiveBranch} />
       <nav aria-label="Projektbereiche"><button className="nav-link" onClick={onWritingRoom}>Schreibraum</button><button className="nav-link current">Fundgrube {notificationCount > 0 && <span className="new-dot">{newCount}</span>}</button><button className="nav-link" onClick={onVersions}>Versionen & Zweige</button></nav>
       <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={event => setVolume(event.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
     </header>
@@ -243,7 +284,7 @@ function Fundgrube({ volume, setVolume, notificationCount, onWritingRoom, onVers
       <aside className="fundgrube-sidebar"><div className="side-title"><span>FUNDGRUBE</span></div>{(['Übersicht', 'Figuren', 'Orte', 'Offene Fäden', 'Widersprüche'] as FundgrubeView[]).map(item => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{item}<span>{item === 'Figuren' ? 6 : item === 'Orte' ? 4 : item === 'Offene Fäden' ? 5 : item === 'Widersprüche' ? 1 : ''}</span></button>)}<div className="gathered-note">Still gesammelt aus Kap. 1–18.<br />Nichts ändert deinen Text.</div></aside>
       <section className="fundgrube-content">
         <div className="fundgrube-heading"><div><div className="eyebrow ai-label"><Sparkles size={13} /> STILL GESAMMELT</div><h1>{view}</h1><p>{view === 'Übersicht' ? <>Was deine Geschichte bisher enthält · bezieht sich auf <strong>Kap. 1–18</strong></> : 'Was deine Geschichte bisher enthält'}</p></div>{view === 'Übersicht' && <div className="fund-filter"><Chip active>Alle</Chip><Chip>Neu · {newCount}</Chip><Chip>Bestätigt</Chip></div>}</div>
-        {view === 'Übersicht' && <section className="new-findings"><div className="new-findings-title"><strong>{newCount} neue Fundstücke</strong><span>Du entscheidest, was bleibt.</span></div><div className="new-finding-grid">{visibleFindings.map(finding => <article className="new-finding" key={finding.id}><div className="finding-top"><span>{finding.type}</span>{findingsState[finding.id] === 'confirmed' ? <em>bestätigt</em> : <em><Sparkles size={11} /> von KI gefunden</em>}</div><h3>{finding.title}</h3><button className="fund-source">Quelle: {finding.source}</button><div><button className="confirm" onClick={() => setFindingsState(current => ({ ...current, [finding.id]: 'confirmed' }))}>Bestätigen</button><button>Bearbeiten</button><button onClick={() => setFindingsState(current => ({ ...current, [finding.id]: 'removed' }))}>Entfernen</button></div></article>)}</div></section>}
+        {view === 'Übersicht' && <section className="new-findings"><div className="new-findings-title"><strong>{newCount} neue Fundstücke</strong><span>Du entscheidest, was bleibt.</span></div><div className="new-finding-grid">{visibleFindings.map(finding => <article className="new-finding" key={finding.id}><div className="finding-top"><span>{finding.type}</span>{findingsState[finding.id] === 'confirmed' ? <em>bestätigt</em> : <em><Sparkles size={11} /> von KI gefunden</em>}</div><h3>{finding.title}</h3><button className="fund-source">Quelle: {finding.source}</button><div><button className="confirm" onClick={() => { setFindingsState(current => ({ ...current, [finding.id]: 'confirmed' })); onSave() }}>Bestätigen</button><button>Bearbeiten</button><button onClick={() => { setFindingsState(current => ({ ...current, [finding.id]: 'removed' })); onSave() }}>Entfernen</button></div></article>)}</div></section>}
         <div className="fundgrube-columns">
           <div>
             {show('Figuren') && <FundgrubeFigures />}
@@ -267,21 +308,46 @@ function FundgrubeThreads({ statuses, onCycle }: { statuses: Record<string, stri
 
 function FundgrubeContradiction({ onDismiss }: { onDismiss: () => void }) { return <section className="contradiction-card"><div className="contradiction-title"><h2>Möglicher Widerspruch</h2><span><Sparkles size={11} /> KI-Hinweis</span></div><h3>{fundgrubeContradiction.title}</h3><p>Vielleicht Absicht. Du entscheidest.</p><button className="confirm">Zu den Stellen</button><button onClick={onDismiss}>Ist Absicht</button></section> }
 
-function InputPanel(props: { selectionText: string; figureNames: string[]; scope: string; setScope: (value: string) => void; intent: string | null; setIntent: (value: string | null) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; onStart: () => void; onBoundary: () => void }) {
+function InputPanel(props: { selectionText: string; figureNames: string[]; scope: string; setScope: (value: string) => void; intent: string | null; setIntent: (value: string | null) => void; editing: boolean; setEditing: (value: boolean) => void; assumptionText: string; setAssumptionText: (value: string) => void; onSave: () => void; onStart: () => void }) {
   const [draft, setDraft] = useState(props.assumptionText)
+  const [isUnderstandingLoading, setIsUnderstandingLoading] = useState(false)
+  const [questionDraft, setQuestionDraft] = useState('')
+  const [addedQuestion, setAddedQuestion] = useState<string | null>(null)
   useEffect(() => { if (!props.editing) setDraft(props.assumptionText) }, [props.assumptionText, props.editing])
+  useEffect(() => {
+    if (!props.intent) {
+      setIsUnderstandingLoading(false)
+      return
+    }
+    setIsUnderstandingLoading(true)
+    const timeout = window.setTimeout(() => setIsUnderstandingLoading(false), 1000)
+    return () => window.clearTimeout(timeout)
+  }, [props.intent, props.scope])
   const intentHelp: Record<string, string> = {
     'Ich stecke fest': 'Ich zeige dir Möglichkeiten, wie es weitergehen könnte.',
     'Was habe ich vergessen?': 'Ich suche offene Fäden und vergessene Figuren.',
     'Perspektive wechseln': 'Ich zeige dir die Szene aus der Sicht einer Figur.',
   }
   const scopes = ['Kap. 1–18', 'nur dieses Kapitel', ...props.figureNames.map(name => `Figur: ${name}`)]
-  return <div className="panel-content input-panel"><section className="selected-text"><div className="input-section-heading"><i>1</i><h3>Deine Stelle</h3></div><p>{props.selectionText ? `„${props.selectionText}“` : 'Markiere eine Stelle im Text.'}</p></section><section><div className="input-section-heading"><i>2</i><h3>Was brauchst du?</h3></div><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => props.setIntent(value)}>{value}</Chip>)}</div><p className="input-hint">{props.intent ? intentHelp[props.intent] : 'Wähle zuerst, wobei ich dir helfen soll.'}</p></section><section><div className="input-section-heading"><i>3</i><h3>Wo soll ich suchen?</h3></div><div className="chips">{scopes.map(value => <Chip key={value} active={props.scope === value} onClick={() => props.setScope(value)}>{value}</Chip>)}</div><p className="input-hint">Figuren-Chips kommen aus deiner markierten Stelle.</p></section>{props.intent && <section><div className="input-section-heading"><i>4</i><h3>So verstehe ich dich</h3></div><div className="assumption"><div className="assumption-title"><span>KI</span>{!props.editing && <button onClick={() => { setDraft(props.assumptionText); props.setEditing(true) }}>Korrigieren</button>}</div>{props.editing ? <><textarea aria-label="KI-Verständnis korrigieren" value={draft} onChange={event => setDraft(event.target.value)} /><div className="assumption-actions"><button onClick={() => { props.setAssumptionText(draft); props.setEditing(false) }}>Bestätigen</button><button onClick={() => { setDraft(props.assumptionText); props.setEditing(false) }}>Abbrechen</button></div></> : <p>{props.assumptionText}</p>}<label className="optional-question">Eigene Frage (optional)<input placeholder="Optional" onChange={event => { if (event.target.value.toLowerCase().includes('schreib')) props.onBoundary() }} /></label></div></section>}<button className="primary-button" disabled={!props.intent} onClick={props.onStart}><Sparkles size={17} />Innehalten</button></div>
+  const addQuestion = () => {
+    const question = questionDraft.trim()
+    if (!question) return
+    setAddedQuestion(question)
+    setQuestionDraft('')
+    props.onSave()
+  }
+  return <div className="panel-content input-panel">
+    <section className="selected-text"><div className="input-section-heading"><i>1</i><h3>Deine Stelle</h3></div><p>{props.selectionText ? `„${props.selectionText}“` : 'Markiere eine Stelle im Text.'}</p></section>
+    <section><div className="input-section-heading"><i>2</i><h3>Was brauchst du?</h3></div><div className="chips">{['Ich stecke fest', 'Was habe ich vergessen?', 'Perspektive wechseln'].map(value => <Chip key={value} active={props.intent === value} onClick={() => { if (value !== props.intent) { setIsUnderstandingLoading(true); props.setIntent(value) } }}>{value}</Chip>)}</div><p className="input-hint">{props.intent ? intentHelp[props.intent] : 'Wähle zuerst, wobei ich dir helfen soll.'}</p></section>
+    <section><div className="input-section-heading"><i>3</i><h3>Wo soll ich suchen?</h3></div><div className="chips">{scopes.map(value => <Chip key={value} active={props.scope === value} onClick={() => { if (value !== props.scope) { setIsUnderstandingLoading(true); props.setScope(value) } }}>{value}</Chip>)}</div><p className="input-hint">Figuren-Chips kommen aus deiner markierten Stelle.</p></section>
+    {props.intent && <section><div className="input-section-heading"><i>4</i><h3>So verstehe ich dich</h3></div>{isUnderstandingLoading ? <div className="understanding-loading" aria-live="polite"><div className="understanding-loading-label"><Sparkles size={14} /><span className="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Ich lese deine Stelle …</span></div><div className="understanding-skeleton"><i></i><i></i></div></div> : <div className="assumption understanding-ready"><div className="assumption-title"><span>KI</span>{!props.editing && <button onClick={() => { setDraft(props.assumptionText); props.setEditing(true) }}>Korrigieren</button>}</div>{props.editing ? <><textarea aria-label="KI-Verständnis korrigieren" value={draft} onChange={event => setDraft(event.target.value)} /><div className="assumption-actions"><button onClick={() => { props.setAssumptionText(draft); props.setEditing(false); props.onSave() }}>Bestätigen</button><button onClick={() => { setDraft(props.assumptionText); props.setEditing(false) }}>Abbrechen</button></div></> : <p>{props.assumptionText}</p>}<label className="optional-question">Eigene Frage <span>(optional)</span><div className="question-entry"><input value={questionDraft} placeholder="Was möchtest du noch wissen?" onChange={event => setQuestionDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addQuestion() } }} /><button type="button" disabled={!questionDraft.trim()} onClick={addQuestion}>Hinzufügen</button></div></label>{addedQuestion && <div className="added-question"><span>Eigene Frage ergänzt</span><p>„{addedQuestion}“</p><button onClick={() => setAddedQuestion(null)} aria-label="Eigene Frage entfernen"><X size={13} /></button></div>}</div>}</section>}
+    <button className="primary-button" disabled={!props.intent || isUnderstandingLoading} onClick={props.onStart}><Sparkles size={17} />Innehalten</button>
+  </div>
 }
 
 function LoadingPanel({ onCancel }: { onCancel: () => void }) { return <div className="panel-content loading"><div className="loading-orbit"><span></span><Sparkles size={23} /></div><h3>Ich sehe mir deine Spuren an</h3><p>Ich prüfe nur den gewählten Bereich und ändere nichts an deinem Text.</p><ul>{loadingSteps.map((step, index) => <li key={step} className={index < 2 ? 'done' : 'working'}><span>{index < 2 ? '✓' : '…'}</span>{step}</li>)}</ul><button className="secondary-button" onClick={onCancel}>Abbrechen</button></div> }
 
-function ResultPanel({ lens, setLens, branches: shownBranches, onExplore, onAction, onAlternatives }: { lens: string; setLens: (value: string) => void; branches: Branch[]; onExplore: (branch: Branch) => void; onAction: (message: string, action: string) => void; onAlternatives: () => void }) { return <div className="panel-content result"><section><div className="section-title"><h3>Fundstücke</h3><span className="count">{findings.length}</span></div>{findings.map(finding => <article className="finding" key={finding.title}><span>{finding.label}</span><h4>{finding.title}</h4><p>{finding.text}</p><SourceLine sources={finding.sources} /></article>)}</section><section><div className="section-title"><h3>Fragen an dich</h3></div><ol className="questions">{questions.map(question => <li key={question}><button onClick={() => onAction('Als private Notiz gesichert. Dein Manuskript bleibt unverändert.', 'Notiz übernommen')}>{question}</button></li>)}</ol></section><section><div className="section-title"><h3>Was wäre wenn …</h3><span className="ai-tag">KI</span></div><div className="branch-list">{shownBranches.map(branch => <article className="branch-card" key={branch.id}><h4>{branch.title}</h4><p>{branch.description}</p><small>{branch.source}</small><div className="branch-actions"><button className="branch-primary" onClick={() => onExplore(branch)}>Spuren suchen</button><button onClick={() => onAction(`„${branch.title}“ wurde als Notiz abgelegt.`, 'Notiz übernommen')}>Notiz</button><button onClick={() => onAction(`„${branch.title}“ wurde für später vorgemerkt.`, 'Für später vorgemerkt')}><Clock3 size={14} /></button><button onClick={() => onAction(`„${branch.title}“ wird nicht mehr angezeigt.`, 'Verworfen')}>Verwerfen</button></div></article>)}</div><button className="text-button" onClick={onAlternatives}>Andere Zweige zeigen <ArrowLeft className="arrow-right" size={15} /></button></section><section className="lens"><h3>Linse</h3><div className="chips">{['neutral', 'aus Miras Sicht', 'aus Teos Sicht'].map(value => <Chip key={value} active={lens === value} onClick={() => setLens(value)}>{value}</Chip>)}</div></section></div> }
+function ResultPanel({ lens, setLens, branches: shownBranches, onExplore, onAction, onAlternatives, onFundgrube, onOpenChapter }: { lens: string; setLens: (value: string) => void; branches: Branch[]; onExplore: (branch: Branch) => void; onAction: (message: string, action: string) => void; onAlternatives: () => void; onFundgrube: () => void; onOpenChapter: (chapter: number) => void }) { return <div className="panel-content result"><section><div className="section-title"><h3>Fundstücke</h3><span className="count">{findings.length}</span></div>{findings.map(finding => <article className="finding" key={finding.title}><span>{finding.label}</span><h4>{finding.title}</h4><p>{finding.text}</p><SourceLine sources={finding.sources} onOpenChapter={onOpenChapter} /><button className="fundgrube-link" onClick={onFundgrube}>In der Fundgrube ansehen <ArrowLeft className="arrow-right" size={13} /></button></article>)}</section><section><div className="section-title"><h3>Fragen an dich</h3></div><ol className="questions">{questions.map(question => <li key={question}><button onClick={() => onAction('Als private Notiz gesichert. Dein Manuskript bleibt unverändert.', 'Notiz übernommen')}>{question}</button></li>)}</ol></section><section><div className="section-title"><h3>Was wäre wenn …</h3><span className="ai-tag">KI</span></div><div className="branch-list">{shownBranches.map(branch => <article className="branch-card" key={branch.id}><h4>{branch.title}</h4><p>{branch.description}</p><small>{branch.source}</small><div className="branch-actions"><button className="branch-primary" onClick={() => onExplore(branch)}>Spuren suchen</button><button onClick={() => onAction(`„${branch.title}“ wurde als Notiz abgelegt.`, 'Notiz übernommen')}>Notiz</button><button onClick={() => onAction(`„${branch.title}“ wurde für später vorgemerkt.`, 'Für später vorgemerkt')}><Clock3 size={14} /></button><button onClick={() => onAction(`„${branch.title}“ wird nicht mehr angezeigt.`, 'Verworfen')}>Verwerfen</button></div></article>)}</div><button className="text-button" onClick={onAlternatives}>Andere Zweige zeigen <ArrowLeft className="arrow-right" size={15} /></button></section><section className="lens"><h3>Linse</h3><div className="chips">{['neutral', 'aus Miras Sicht', 'aus Teos Sicht'].map(value => <Chip key={value} active={lens === value} onClick={() => setLens(value)}>{value}</Chip>)}</div></section></div> }
 
 function EmptyPanel({ onClose, onExpand }: { onClose: () => void; onExpand: () => void }) { return <div className="panel-content empty-state"><div className="empty-icon"><Search size={25} /></div><h3>Hier finde ich keinen offenen Faden.</h3><p>Möchtest du den Bereich erweitern?</p><button className="primary-button" onClick={onExpand}>Ganzes Manuskript prüfen</button><button className="text-button" onClick={onClose}>Schließen</button></div> }
 

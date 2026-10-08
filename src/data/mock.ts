@@ -58,20 +58,14 @@ export const assumption = 'Dir fehlt ein Thronfolger, weil Prinz Edrik in Kap. 4
 
 export const findings = [
   {
-    label: 'Figur',
-    title: 'Der Gesandte aus Velmor',
-    text: 'Eine neue Figur wird in Kap. 17 erstmals erwähnt.',
-    sources: [{ chapter: 17, page: 288 }] satisfies Source[],
-  },
-  {
-    label: 'Ort',
-    title: 'Der Nordhof',
-    text: 'Der Ort wird in Kap. 18 zweimal erwähnt.',
-    sources: [{ chapter: 18, page: 303 }] satisfies Source[],
-  },
-  {
     label: 'Offener Faden',
+    title: 'Thronfolge',
+    text: 'Prinz Edrik stirbt in Kap. 4, danach wird kein Erbe genannt.',
+    sources: [{ chapter: 4, page: 61 }, { chapter: 18, page: 302 }] satisfies Source[],
+  },
+  {
     title: '„Das andere Siegel“',
+    label: 'Offener Faden',
     text: 'Ein Faden aus Kap. 11 taucht zuletzt in Kap. 16 wieder auf.',
     sources: [{ chapter: 11, page: 190 }, { chapter: 16, page: 270 }] satisfies Source[],
   },
@@ -132,9 +126,9 @@ export const loadingSteps = [
 ]
 
 export const fundgrubeFindings = [
-  { id: 'velmor', type: findings[0].label, title: findings[0].title, source: 'Kap. 17, S. 288 · 1 Erwähnung' },
-  { id: 'nordhof', type: findings[1].label, title: findings[1].title, source: 'Kap. 18, S. 303 · 2 Erwähnungen' },
-  { id: 'siegel', type: 'Faden', title: findings[2].title, source: 'Kap. 11, S. 190 · zuletzt Kap. 16 ↗' },
+  { id: 'velmor', type: 'Figur', title: 'Der Gesandte aus Velmor', source: 'Kap. 17, S. 288 · 1 Erwähnung' },
+  { id: 'nordhof', type: 'Ort', title: 'Der Nordhof', source: 'Kap. 18, S. 303 · 2 Erwähnungen' },
+  { id: 'siegel', type: 'Faden', title: '„Das andere Siegel“', source: 'Kap. 11, S. 190 · zuletzt Kap. 16 ↗' },
 ]
 
 export const fundgrubeFigures = [
