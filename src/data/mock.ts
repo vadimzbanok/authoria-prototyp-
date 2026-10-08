@@ -1,6 +1,7 @@
 export type Source = { chapter: number; page: number }
 
 export const chapters = [
+  { number: 2, title: 'Zwei Brüder im Schnee', page: 31 },
   { number: 15, title: 'Der rote Schwur', page: 249 },
   { number: 16, title: 'Unter den Zinnen', page: 267 },
   { number: 17, title: 'Das letzte Gelöbnis', page: 286 },
@@ -21,6 +22,14 @@ export const manuscript = {
 }
 
 export const chapterManuscripts: Record<number, { title: string; page: number; paragraphs: string[] }> = {
+  2: {
+    title: 'Zwei Brüder im Schnee',
+    page: 31,
+    paragraphs: [
+      'Im Stall roch es nach Heu und kaltem Eisen. Der junge Edrik wollte sein Pferd selbst satteln, wie jeden Morgen.',
+      'Der Stallmeister senkte den Blick, als Edriks Name fiel. Draußen begann es zu schneien.',
+    ],
+  },
   15: {
     title: 'Der rote Schwur',
     page: 249,

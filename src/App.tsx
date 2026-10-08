@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, Lightbulb, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, GitBranch, Lightbulb, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
 import { alternativeBranches, assumption, branches, chapterManuscripts, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
 import './notes.css'
 
@@ -12,6 +12,7 @@ type ManuscriptSelection = { start: number; end: number; text: string }
 type SaveState = 'saving' | 'saved'
 type PrivateNote = { id: string; chapter: number; question: string; text: string; selection: ManuscriptSelection }
 type ClueStatus = { status: 'saved' | 'skipped'; text: string }
+type VersionsMode = 'overview' | 'changes'
 
 const initialSelectionStart = manuscript.paragraphs.slice(0, 2).join('').length
 const initialManuscriptSelection = { start: initialSelectionStart, end: initialSelectionStart + manuscript.paragraphs[2].length, text: manuscript.selection }
@@ -76,8 +77,8 @@ function BranchSwitcher({ activeBranch, brotherCreated, onChange }: { activeBran
   return <div className="branch-switcher" ref={menuRef}><button className={`active-branch-pill ${activeBranch}`} onClick={() => setOpen(current => !current)} aria-expanded={open} aria-haspopup="menu">⌘ {activeBranch === 'main' ? 'Hauptlinie' : 'Zweig: Bruder'}⌄</button>{open && <div className="branch-menu" role="menu"><button className={activeBranch === 'main' ? 'active' : ''} onClick={() => choose('main')} role="menuitem">Hauptlinie</button>{brotherCreated && <button className={activeBranch === 'brother' ? 'active' : ''} onClick={() => choose('brother')} role="menuitem">Zweig „Bruder“</button>}</div>}</div>
 }
 
-function SaveStatus({ state }: { state: SaveState }) {
-  return <div className={`save-status ${state}`} role="status" aria-live="polite">{state === 'saving' ? <><i aria-hidden="true"></i>Speichert …</> : <><b aria-hidden="true">✓</b>Gespeichert</>}</div>
+function SaveStatus({ state, branch }: { state: SaveState; branch?: 'brother' }) {
+  return <div className={`save-status ${state}`} role="status" aria-live="polite">{state === 'saving' ? <><i aria-hidden="true"></i>Speichert …</> : <><b aria-hidden="true">✓</b>{branch === 'brother' ? 'Gespeichert im Zweig „Bruder“' : 'Gespeichert'}</>}</div>
 }
 
 export default function App() {
@@ -102,6 +103,11 @@ export default function App() {
   const [selectedClue, setSelectedClue] = useState<number | null>(null)
   const [branchSaved, setBranchSaved] = useState(false)
   const [clueStates, setClueStates] = useState<Record<number, ClueStatus>>({})
+  const [brotherContinuation, setBrotherContinuation] = useState('')
+  const [mainContinuation, setMainContinuation] = useState('')
+  const [mainTrace, setMainTrace] = useState('')
+  const [branchMerged, setBranchMerged] = useState(false)
+  const [versionsMode, setVersionsMode] = useState<VersionsMode>('overview')
   const [findingsState, setFindingsState] = useState<Record<string, 'new' | 'confirmed' | 'removed'>>({})
   const [hasFundgrubeUpdates, setHasFundgrubeUpdates] = useState(false)
   const [threadStatus, setThreadStatus] = useState(() => Object.fromEntries(fundgrubeThreads.map(thread => [thread.id, thread.status])) as Record<string, string>)
@@ -114,6 +120,9 @@ export default function App() {
   const manuscriptRef = useRef<HTMLElement>(null)
   const [activeChapter, setActiveChapter] = useState(18)
   const currentManuscript = chapterManuscripts[activeChapter]
+  const canContinueInBrother = activeChapter === 18 && activeBranch === 'brother' && branchSaved
+  const brotherTrace = clueStates[0]?.status === 'saved' ? clueStates[0].text : ''
+  const changedChapters = [brotherTrace && 2, brotherContinuation.trim() && 18].filter(Boolean) as number[]
   const selectedText = manuscriptSelection?.text ?? ''
   const selectedFigures = figuresInText(selectedText)
   const understandingContextRef = useRef('')
@@ -289,12 +298,41 @@ export default function App() {
     setManuscriptSelection(note.selection)
     setPage('schreibraum')
   }
+  const mergeBrotherIntoMain = () => {
+    setMainContinuation(brotherContinuation)
+    setMainTrace(brotherTrace)
+    setBranchMerged(true)
+    setVersionsMode('overview')
+    setActiveBranch('main')
+    markImportantChange()
+  }
+  const discardBrother = () => {
+    setActiveBranch('main')
+    setBrotherCreated(false)
+    setBranchSaved(false)
+    setClueStates({})
+    setBrotherContinuation('')
+    setBranchMerged(false)
+    markImportantChange()
+  }
+  const openBranchChanges = () => {
+    setVersionsMode('changes')
+    setPage('versionen')
+  }
+  const openBranchChapter = (chapter: number) => {
+    setActiveBranch('brother')
+    setActiveChapter(chapter)
+    setManuscriptSelection(null)
+    setVersionsMode('overview')
+    setPage('schreibraum')
+  }
+  const continueInBranch = () => openBranchChapter(18)
 
   if (page === 'fundgrube') {
     return <Fundgrube volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} findingsState={findingsState} setFindingsState={setFindingsState} threadStatus={threadStatus} setThreadStatus={setThreadStatus} notes={privateNotes} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onOpenNote={openPrivateNote} onWritingRoom={returnToWritingRoom} onVersions={() => setPage('versionen')} />
   }
   if (page === 'versionen') {
-    return <Versions volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} activeBranch={activeBranch} brotherCreated={brotherCreated} clueStates={clueStates} setActiveBranch={changeBranch} onSave={markImportantChange} onWritingRoom={returnToWritingRoom} onFundgrube={() => setPage('fundgrube')} />
+    return <Versions volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} activeBranch={activeBranch} brotherCreated={brotherCreated} clueStates={clueStates} brotherContinuation={brotherContinuation} view={versionsMode} setActiveBranch={changeBranch} onMerge={mergeBrotherIntoMain} onDiscard={discardBrother} onContinue={continueInBranch} onOpenChapter={openBranchChapter} onSave={markImportantChange} onWritingRoom={returnToWritingRoom} onFundgrube={() => setPage('fundgrube')} />
   }
 
   return (
@@ -306,22 +344,25 @@ export default function App() {
         <div className="top-actions"><label className="volume"><Sparkles size={15} /><span>KI:</span><select value={volume} onChange={e => setVolume(e.target.value)} aria-label="KI-Lautstärke"><option>still</option><option>leise</option><option>gesprächig</option></select></label><button className="avatar" aria-label="Profil von Lena">LW</button></div>
       </header>
 
+      {activeBranch === 'brother' && <div className="branch-bar"><div><GitBranch size={15} /><strong>Du schreibst im Zweig „Bruder“</strong><span>·</span><span>{changedChapters.length} {changedChapters.length === 1 ? 'Änderung' : 'Änderungen'} · {changedChapters.map(chapter => `Kap. ${chapter}`).join(', ') || 'noch keine Kapitel'}</span><button onClick={openBranchChanges}>Alle Änderungen ansehen</button></div><button onClick={() => changeBranch('main')}>Zur Hauptlinie</button></div>}
       <div className="workspace">
         <aside className="sidebar">
           <div className="side-title"><span>MANUSKRIPT</span><button aria-label="Kapitel hinzufügen"><Plus size={17} /></button></div>
           <div className="book-title"><FileText size={16} /> Der Sommer der Könige</div>
-          <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => { setActiveChapter(chapter.number); setManuscriptSelection(chapter.number === 18 ? initialManuscriptSelection : null); closePanel() }} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>S. {chapter.page}</small></button>)}</div>
+          <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => { setActiveChapter(chapter.number); setManuscriptSelection(chapter.number === 18 ? initialManuscriptSelection : null); closePanel() }} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>{activeBranch === 'brother' && changedChapters.includes(chapter.number) && <i className="chapter-change-dot" />}S. {chapter.page}</small></button>)}</div>
           <div className="sidebar-bottom"><button><Search size={16} />Durchsuchen</button><button><CircleHelp size={16} />Hilfe & Feedback</button></div>
         </aside>
 
         <section className="editor" aria-label="Manuskript" onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
-          <div className="editor-utility-row"><div className="editor-selection-hint" role="note"><span>Tipp</span> Text markieren: Mit der Maus über eine Stelle ziehen.</div><SaveStatus state={saveState} /></div>
+          <div className="editor-utility-row"><div className="editor-selection-hint" role="note"><span>Tipp</span> Text markieren: Mit der Maus über eine Stelle ziehen.</div><SaveStatus state={saveState} branch={activeBranch === 'brother' ? 'brother' : undefined} /></div>
           <div className="editor-meta"><span>Kapitel {activeChapter}</span><span>·</span><span>Seite {currentManuscript.page}</span></div>
           <article className="manuscript" ref={manuscriptRef} onMouseUp={captureSelection} onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
             <h1>{currentManuscript.title}</h1>
-            {(() => { let offset = 0; return currentManuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; const paragraphNotes = privateNotes.filter(note => note.chapter === activeChapter && note.selection.end > start && note.selection.end <= offset); return <div className="manuscript-entry" key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}</p>{paragraphNotes.map(note => <MarginNote key={note.id} note={note} editing={editingNoteId === note.id} onEdit={() => setEditingNoteId(note.id)} onCancel={() => setEditingNoteId(null)} onUpdate={updatePrivateNote} onDelete={deletePrivateNote} />)}{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
+            {(() => { let offset = 0; return currentManuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; const paragraphNotes = privateNotes.filter(note => note.chapter === activeChapter && note.selection.end > start && note.selection.end <= offset); const traceText = activeBranch === 'brother' ? brotherTrace : mainTrace; const showBranchTrace = activeChapter === 2 && paragraph.includes('Stallmeister') && traceText && (activeBranch === 'brother' || branchMerged); const insertContinuation = canContinueInBrother && actionAfter; return <div className="manuscript-entry" key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}{showBranchTrace && <span className={activeBranch === 'brother' ? 'inline-branch-trace' : 'inline-merged-trace'}> {traceText}</span>}</p>{paragraphNotes.map(note => <MarginNote key={note.id} note={note} editing={editingNoteId === note.id} onEdit={() => setEditingNoteId(note.id)} onCancel={() => setEditingNoteId(null)} onUpdate={updatePrivateNote} onDelete={deletePrivateNote} />)}{insertContinuation && <><BranchContinuation value={brotherContinuation} onChange={value => { setBrotherContinuation(value); markImportantChange() }} /><div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt</div></>}{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
+            {activeChapter === 18 && activeBranch === 'main' && mainContinuation && <p className="merged-manuscript-continuation">{mainContinuation}</p>}
+            {activeChapter === 18 && activeBranch === 'brother' && <p className="branch-text-legend">Neu im Zweig „Bruder“ · grün unterstrichen = von dir geschrieben</p>}
+            {activeChapter === 18 && activeBranch === 'main' && brotherCreated && !branchMerged && <aside className="mainline-branch-hint">Du bist in der Hauptlinie: das Original, ohne die Änderungen aus dem Zweig „Bruder“. Der Zweig bleibt gespeichert.</aside>}
           </article>
-          {branchSaved && <div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt</div>}
           <button className="pause-button" onClick={openPanel}><span className="pause-icon">Ⅱ</span> Innehalten</button>
         </section>
 
@@ -333,7 +374,7 @@ export default function App() {
           {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} notes={privateNotes} chapter={activeChapter} onSaveNote={savePrivateNote} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} onFundgrube={() => setPage('fundgrube')} onOpenChapter={openSourceChapter} />}
           {panel === 'empty' && <EmptyPanel onClose={() => setPanel(null)} onExpand={() => { setScope('Ganzes Manuskript'); setPanel('loading') }} />}
           {panel === 'boundary' && <BoundaryPanel onQuestions={() => { setIntent('Was habe ich vergessen?'); setPanel('loading') }} onPerspective={() => { setIntent('Perspektive wechseln'); setPanel('input') }} />}
-          {panel === 'clues' && <CluesPanel selected={selectedClue} setSelected={setSelectedClue} clueStates={clueStates} setClueStates={setClueStates} onChange={markImportantChange} onSave={() => { setBranchSaved(true); setActiveBranch('main'); markImportantChange(); setFeedback({ message: 'Zweig „Bruder“ gesichert · Original bleibt', action: 'Zweig „Bruder“' }); setPanel(null) }} />}
+          {panel === 'clues' && <CluesPanel selected={selectedClue} setSelected={setSelectedClue} clueStates={clueStates} setClueStates={setClueStates} onChange={markImportantChange} onSave={() => { setBranchSaved(true); setActiveBranch('brother'); markImportantChange(); setFeedback({ message: 'Zweig „Bruder“ gesichert · Original bleibt', action: 'Zweig „Bruder“' }); setPanel(null) }} />}
           {panel !== 'clues' && <div className="panel-footer"><button onClick={undo} disabled={!feedback && panel !== 'result'}><RotateCcw size={15} />Rückgängig</button><button onClick={resetPanel}>Panel zurücksetzen</button><button onClick={() => setPanel(null)}>Panel schließen</button></div>}
           {feedback && <div className="toast"><span>✓</span><div><strong>{feedback.action}</strong><p>{feedback.message}</p></div><button onClick={undo} aria-label="Rückmeldung schließen"><X size={15} /></button></div>}
         </aside>}
@@ -342,13 +383,18 @@ export default function App() {
   )
 }
 
-function Versions({ volume, setVolume, notificationCount, activeBranch, brotherCreated, clueStates, setActiveBranch, onSave, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; activeBranch: 'main' | 'brother'; brotherCreated: boolean; clueStates: Record<number, ClueStatus>; setActiveBranch: (branch: 'main' | 'brother') => void; onSave: () => void; onWritingRoom: () => void; onFundgrube: () => void }) {
+function Versions({ volume, setVolume, notificationCount, activeBranch, brotherCreated, clueStates, brotherContinuation, view, setActiveBranch, onMerge, onDiscard, onContinue, onOpenChapter, onSave, onWritingRoom, onFundgrube }: { volume: string; setVolume: (value: string) => void; notificationCount: number; activeBranch: 'main' | 'brother'; brotherCreated: boolean; clueStates: Record<number, ClueStatus>; brotherContinuation: string; view: VersionsMode; setActiveBranch: (branch: 'main' | 'brother') => void; onMerge: () => void; onDiscard: () => void; onContinue: () => void; onOpenChapter: (chapter: number) => void; onSave: () => void; onWritingRoom: () => void; onFundgrube: () => void }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const active = versionsBranches.find(branch => branch.id === activeBranch) ?? versionsBranches[0]
   const savedClueIndex = clues.findIndex((_, index) => clueStates[index]?.status === 'saved')
   const savedClue = savedClueIndex >= 0 ? clues[savedClueIndex] : null
   const savedClueText = savedClueIndex >= 0 ? clueStates[savedClueIndex].text : ''
+  const branchHistory = brotherContinuation.trim() ? [{ title: 'Kap. 18 · Weitergeschrieben', detail: 'Heute · von dir geschrieben', branch: 'Zweig „Bruder“', tone: 'author' }, ...versionHistory] : versionHistory
+  const continuationOriginal = chapterManuscripts[18].paragraphs.at(-1) ?? ''
+  const comparisonTitle = brotherContinuation.trim() ? 'Kap. 18 „Die leere Krone“' : savedClue ? `Kap. ${savedClue.chapter}` : 'Kap. 2 „Zwei Brüder im Schnee“'
+  const comparisonOriginal = brotherContinuation.trim() ? continuationOriginal : savedClue ? savedClue.context : 'Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte.'
+  const branchChanges = [savedClueText && { chapter: savedClue?.chapter ?? 2, original: savedClue?.excerpt ?? '', text: savedClueText, meta: '+ 1 Satz · Spur · von dir geschrieben' }, brotherContinuation.trim() && { chapter: 18, original: continuationOriginal, text: brotherContinuation, meta: '+ 1 Absatz · weitergeschrieben · von dir geschrieben' }].filter(Boolean) as { chapter: number; original: string; text: string; meta: string }[]
   const notify = (message: string) => { onSave(); setNotice(message); window.setTimeout(() => setNotice(null), 2600) }
   return <main className="app versions-app">
     <header className="topbar">
@@ -359,12 +405,17 @@ function Versions({ volume, setVolume, notificationCount, activeBranch, brotherC
     </header>
     <div className="versions-layout">
       <aside className="versions-sidebar"><div className="side-title"><span>ZWEIGE</span></div>{versionsBranches.map(branch => <button key={branch.id} className={activeBranch === branch.id ? 'active' : ''} onClick={() => { if (branch.id === 'main' || (branch.id === 'brother' && brotherCreated)) setActiveBranch(branch.id) }}><i className={branch.id === 'brother' ? 'green' : ''} /><span><strong>{branch.name}</strong><small>{branch.detail}</small></span></button>)}<div className="versions-note">Nichts geht verloren. Jede Änderung wird automatisch gesichert, das Original bleibt immer erhalten.</div></aside>
-      <section className="versions-content"><div className="versions-heading"><div className="eyebrow author-label">NICHTS GEHT VERLOREN</div><h1>Versionen & Zweige</h1><p>Probier Ideen aus, ohne etwas zu riskieren. {activeBranch === 'brother' ? 'Der Zweig „Bruder“ ist gerade aktiv.' : 'Die Hauptlinie ist gerade aktiv.'}</p></div>
-        <section className="comparison-card"><div className="comparison-title"><strong>Zweig-Vergleich · {savedClue ? `Kap. ${savedClue.chapter}` : 'Kap. 2 „Zwei Brüder im Schnee“'}</strong><span><Sparkles size={11} /> Unterschiede markiert</span></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>{savedClue ? savedClue.context : 'Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte.'}</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label>{savedClue ? <><p>{savedClue.context} <mark className="author-insert">{savedClueText}</mark></p><small>+1 Satz · von dir geschrieben</small></> : <><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte. <mark>„Wir waren zwei“, sagte er einmal, und schwieg danach so lange, dass niemand nachzufragen wagte.</mark></p><small>+1 Satz · von dir geschrieben</small></>}</article></div><div className="compare-actions"><button className="author-primary" onClick={() => notify('In die Hauptlinie übernommen')}>Zweig übernehmen</button><button>Im Zweig weiterschreiben</button><button onClick={() => setConfirmDiscard(true)}>Zweig verwerfen</button></div>{confirmDiscard && <div className="discard-confirm"><span>Wirklich verwerfen? Das Original bleibt erhalten.</span><button onClick={() => { setConfirmDiscard(false); notify('Zweig verworfen') }}>Verwerfen</button><button onClick={() => setConfirmDiscard(false)}>Abbrechen</button></div>}</section>
-        <div className="versions-columns"><section className="history"><div className="history-title"><h2>Verlauf</h2><span>automatisch gesichert</span></div><div className="history-card">{versionHistory.map(item => <article key={item.title}><i className={item.tone} /><div><h3>{item.title}</h3><p>{item.detail}</p></div><span className={item.tone === 'author' || item.tone === 'branch' ? 'branch-badge' : 'main-badge'}>{item.branch}</span><button onClick={() => notify('Version wiederhergestellt')}>Wiederherstellen</button></article>)}</div></section><aside><section className="branch-summary"><h2>{active.name}</h2><p>Entstanden aus:</p><strong>Innehalten · Kap. 18 · „Ein Bruder existiert“</strong><p>Spuren gelegt: 2 von 5 Stellen</p><div className="branch-progress"><i /></div><button>Weitere Spuren legen ↗</button></section><section className="saved-info"><h2>Was gesichert wird</h2><ul><li>jede Änderung, automatisch</li><li>das Original bleibt immer erhalten</li><li>Zweige übernimmt nur du</li></ul><small>KI · automatisieren: sichert und markiert. Entscheiden: nur du.</small></section></aside></div>
+      <section className="versions-content"><div className="versions-heading"><div className="eyebrow author-label">NICHTS GEHT VERLOREN</div><h1>{view === 'changes' ? 'Zweig „Bruder“ · alle Änderungen' : 'Versionen & Zweige'}</h1><p>{view === 'changes' ? 'Entstanden aus Innehalten · Kap. 18 · „Ein Bruder existiert“. Links das Original, rechts deine Änderungen.' : <>Probier Ideen aus, ohne etwas zu riskieren. {activeBranch === 'brother' ? 'Der Zweig „Bruder“ ist gerade aktiv.' : 'Die Hauptlinie ist gerade aktiv.'}</>}</p></div>
+        {view === 'changes' ? <BranchChanges changes={branchChanges} onOpenChapter={onOpenChapter} onMerge={() => { onMerge(); notify('In die Hauptlinie übernommen') }} onContinue={onContinue} onDiscard={() => { onDiscard(); notify('Zweig verworfen · Original bleibt') }} /> : <>
+        <section className="comparison-card"><div className="comparison-title"><strong>Zweig-Vergleich · {comparisonTitle}</strong><span><Sparkles size={11} /> Unterschiede markiert</span></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>{comparisonOriginal}</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label>{brotherContinuation.trim() ? <><p>{comparisonOriginal} <mark className="author-insert">{brotherContinuation}</mark></p><small>+1 Satz · von dir geschrieben</small></> : savedClue ? <><p>{savedClue.context} <mark className="author-insert">{savedClueText}</mark></p><small>+1 Satz · von dir geschrieben</small></> : <><p>Der König sprach selten von seiner Kindheit. Wenn er es doch tat, dann nur vom Winter im Nordhof und vom Schnee, der alle Spuren verwischte. <mark>„Wir waren zwei“, sagte er einmal, und schwieg danach so lange, dass niemand nachzufragen wagte.</mark></p><small>+1 Satz · von dir geschrieben</small></>}</article></div><div className="compare-actions"><button className="author-primary" onClick={() => { onMerge(); notify('In die Hauptlinie übernommen') }}>Zweig übernehmen</button><button>Im Zweig weiterschreiben</button><button onClick={() => setConfirmDiscard(true)}>Zweig verwerfen</button></div>{confirmDiscard && <div className="discard-confirm"><span>Wirklich verwerfen? Das Original bleibt erhalten.</span><button onClick={() => { setConfirmDiscard(false); notify('Zweig verworfen') }}>Verwerfen</button><button onClick={() => setConfirmDiscard(false)}>Abbrechen</button></div>}</section>
+        <div className="versions-columns"><section className="history"><div className="history-title"><h2>Verlauf</h2><span>automatisch gesichert</span></div><div className="history-card">{branchHistory.map(item => <article key={item.title}><i className={item.tone} /><div><h3>{item.title}</h3><p>{item.detail}</p></div><span className={item.tone === 'author' || item.tone === 'branch' ? 'branch-badge' : 'main-badge'}>{item.branch}</span><button onClick={() => notify('Version wiederhergestellt')}>Wiederherstellen</button></article>)}</div></section><aside><section className="branch-summary"><h2>{active.name}</h2><p>Entstanden aus:</p><strong>Innehalten · Kap. 18 · „Ein Bruder existiert“</strong><p>Spuren gelegt: 2 von 5 Stellen</p><div className="branch-progress"><i /></div><button>Weitere Spuren legen ↗</button></section><section className="saved-info"><h2>Was gesichert wird</h2><ul><li>jede Änderung, automatisch</li><li>das Original bleibt immer erhalten</li><li>Zweige übernimmt nur du</li></ul><small>KI · automatisieren: sichert und markiert. Entscheiden: nur du.</small></section></aside></div></>}
       </section>
     </div>{notice && <div className="versions-toast">✓ {notice}</div>}
   </main>
+}
+
+function BranchChanges({ changes, onOpenChapter, onMerge, onContinue, onDiscard }: { changes: { chapter: number; original: string; text: string; meta: string }[]; onOpenChapter: (chapter: number) => void; onMerge: () => void; onContinue: () => void; onDiscard: () => void }) {
+  return <div className="branch-changes-view">{changes.map(change => <section className="change-card" key={change.chapter}><div className="change-card-top"><strong>Kap. {change.chapter}</strong><button onClick={() => onOpenChapter(change.chapter)}>Zur Stelle ↗</button></div><div className="compare-texts"><article><label>ORIGINAL · HAUPTLINIE</label><p>{change.original}</p></article><article className="branch-version"><label>ZWEIG „BRUDER“</label><p>{change.original} <mark className="author-insert">{change.text}</mark></p><small>{change.meta}</small></article></div></section>)}{changes.length === 0 && <div className="changes-empty">Noch keine gespeicherten Änderungen im Zweig.</div>}<div className="compare-actions branch-changes-actions"><button className="author-primary" onClick={onMerge}>Zweig übernehmen</button><button onClick={onContinue}>Im Zweig weiterschreiben</button><button onClick={onDiscard}>Zweig verwerfen</button></div></div>
 }
 
 function Fundgrube({ volume, setVolume, notificationCount, findingsState, setFindingsState, threadStatus, setThreadStatus, notes, activeBranch, brotherCreated, setActiveBranch, onSave, onOpenNote, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; notificationCount: number; findingsState: Record<string, 'new' | 'confirmed' | 'removed'>; setFindingsState: React.Dispatch<React.SetStateAction<Record<string, 'new' | 'confirmed' | 'removed'>>>; threadStatus: Record<string, string>; setThreadStatus: React.Dispatch<React.SetStateAction<Record<string, string>>>; notes: PrivateNote[]; activeBranch: 'main' | 'brother'; brotherCreated: boolean; setActiveBranch: (branch: 'main' | 'brother') => void; onSave: () => void; onOpenNote: (note: PrivateNote) => void; onWritingRoom: () => void; onVersions: () => void }) {
@@ -457,6 +508,14 @@ function ResultPanel({ lens, setLens, branches: shownBranches, notes, chapter, o
     <section><div className="section-title"><h3>Was wäre wenn …</h3><span className="ai-tag" aria-label="KI-Hinweis"><Sparkles size={11} /></span></div><div className="branch-list">{shownBranches.map(branch => <article className="branch-card" key={branch.id}><h4>{branch.title}</h4><p>{branch.description}</p><small>{branch.source}</small><div className="branch-actions"><button className="branch-primary" onClick={() => onExplore(branch)}>Spuren suchen</button><button onClick={() => onAction(`„${branch.title}“ wurde als Notiz abgelegt.`, 'Notiz übernommen')}>Notiz</button><button onClick={() => onAction(`„${branch.title}“ wurde für später vorgemerkt.`, 'Für später vorgemerkt')}><Clock3 size={14} /></button><button onClick={() => onAction(`„${branch.title}“ wird nicht mehr angezeigt.`, 'Verworfen')}>Verwerfen</button></div></article>)}</div><button className="text-button" onClick={onAlternatives}>Andere Zweige zeigen <ArrowLeft className="arrow-right" size={15} /></button></section>
     <section className="lens"><h3>Linse</h3><div className="chips">{['neutral', 'aus Miras Sicht', 'aus Teos Sicht'].map(value => <Chip key={value} active={lens === value} onClick={() => setLens(value)}>{value}</Chip>)}</div></section>
   </div>
+}
+
+function BranchContinuation({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const editorRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerText !== value) editorRef.current.innerText = value
+  }, [value])
+  return <section className="branch-continuation"><p>Spur gelegt in Kap. 2 · Du kannst hier weiterschreiben.</p><div ref={editorRef} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Im Zweig Bruder weiterschreiben" data-placeholder="Schreib weiter …" title={value ? 'Neu im Zweig „Bruder“ · von dir geschrieben' : undefined} className={`continuation-editor ${value ? 'has-text' : ''}`} onInput={event => onChange(event.currentTarget.innerText)} /></section>
 }
 
 function MarginNote({ note, editing, onEdit, onCancel, onUpdate, onDelete }: { note: PrivateNote; editing: boolean; onEdit: () => void; onCancel: () => void; onUpdate: (id: string, text: string) => void; onDelete: (id: string) => void }) {
