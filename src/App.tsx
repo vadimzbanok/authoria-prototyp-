@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, GitBranch, Lightbulb, Moon, Plus, RotateCcw, Search, Sparkles, Sun, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, GitBranch, Lightbulb, Moon, Plus, RotateCcw, Search, Settings, Sparkles, Sun, X } from 'lucide-react'
 import { assumption, branches, chapterManuscripts, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
 import './notes.css'
 
@@ -18,11 +18,12 @@ type ActiveBranch = 'main' | 'brother' | 'mira-claim'
 const initialSelectionStart = manuscript.paragraphs.slice(0, 2).join('').length
 const initialManuscriptSelection = { start: initialSelectionStart, end: initialSelectionStart + manuscript.paragraphs[2].length, text: manuscript.selection }
 
-function selectionParts(text: string, textStart: number, selection: ManuscriptSelection | null) {
+function selectionParts(text: string, textStart: number, selection: ManuscriptSelection | null, insertion?: React.ReactNode) {
   if (!selection || selection.end <= textStart || selection.start >= textStart + text.length) return text
   const start = Math.max(0, selection.start - textStart)
   const end = Math.min(text.length, selection.end - textStart)
-  return <>{text.slice(0, start)}<mark className="highlighted">{text.slice(start, end)}</mark>{text.slice(end)}</>
+  const endsHere = selection.end > textStart && selection.end <= textStart + text.length
+  return <>{text.slice(0, start)}<mark className="highlighted">{text.slice(start, end)}</mark>{endsHere && insertion}{text.slice(end)}</>
 }
 
 function figuresInText(text: string) {
@@ -131,7 +132,10 @@ export default function App() {
   const [branchSaved, setBranchSaved] = useState(false)
   const [clueStates, setClueStates] = useState<Record<number, ClueStatus>>({})
   const [brotherContinuation, setBrotherContinuation] = useState('')
+  const [brotherContinuationAnchor, setBrotherContinuationAnchor] = useState<ManuscriptSelection | null>(null)
   const [mainContinuation, setMainContinuation] = useState('')
+  const [mainlineContinuations, setMainlineContinuations] = useState<Record<number, string>>({})
+  const [mainlineContinuationAnchors, setMainlineContinuationAnchors] = useState<Record<number, ManuscriptSelection>>({})
   const [mainTrace, setMainTrace] = useState('')
   const [branchMerged, setBranchMerged] = useState(false)
   const [versionsMode, setVersionsMode] = useState<VersionsMode>('overview')
@@ -148,6 +152,8 @@ export default function App() {
   const manuscriptRef = useRef<HTMLElement>(null)
   const [activeChapter, setActiveChapter] = useState(18)
   const currentManuscript = chapterManuscripts[activeChapter]
+  const activeMainlineContinuation = activeChapter === 18 ? mainContinuation : mainlineContinuations[activeChapter] ?? ''
+  const activeMainlineContinuationAnchor = mainlineContinuationAnchors[activeChapter]
   const canContinueInBrother = activeChapter === 18 && activeBranch === 'brother' && branchSaved
   const brotherTrace = clueStates[0]?.status === 'saved' ? clueStates[0].text : ''
   const changedChapters = [brotherTrace && 2, brotherContinuation.trim() && 18].filter(Boolean) as number[]
@@ -270,7 +276,7 @@ export default function App() {
     if (panel === 'result') setPanel('input')
   }
   const exploreBranch = (branch: Branch) => {
-    if (branch.id === 'brother') { setBrotherCreated(true); setActiveBranch('brother'); markImportantChange(); setPanel('clues'); setFeedback({ action: 'Zweig „Bruder“', message: 'Neuer Zweig „Bruder“ angelegt · Original bleibt' }) }
+    if (branch.id === 'brother') { setBrotherCreated(true); setBrotherContinuationAnchor(panelSelection ?? manuscriptSelection); setActiveBranch('brother'); markImportantChange(); setPanel('clues'); setFeedback({ action: 'Zweig „Bruder“', message: 'Neuer Zweig „Bruder“ angelegt · Original bleibt' }) }
     else act(`„${branch.title}“ bleibt als Möglichkeit sichtbar.`, 'Gemerkte Möglichkeit')
   }
   const openSourceChapter = (chapter: number) => {
@@ -301,22 +307,26 @@ export default function App() {
     const selection = window.getSelection()
     if (!root || !selection || selection.rangeCount === 0 || selection.isCollapsed || !selection.anchorNode || !selection.focusNode || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return
     const range = selection.getRangeAt(0)
-    const paragraphs = Array.from(root.querySelectorAll<HTMLElement>('[data-manuscript-paragraph]'))
-    const textPosition = (node: Node, offset: number) => {
-      if (!paragraphs.length) return null
-      const fromFirstParagraph = document.createRange()
-      fromFirstParagraph.setStartBefore(paragraphs[0])
-      try {
-        fromFirstParagraph.setEnd(node, offset)
-        return fromFirstParagraph.toString().length
-      } catch {
-        return null
-      }
+    const elementFor = (node: Node) => node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node.parentElement
+    const isInEditor = (node: Node) => Boolean(elementFor(node)?.closest('[data-branch-editor]'))
+    if (isInEditor(range.startContainer) || isInEditor(range.endContainer) || Array.from(root.querySelectorAll('[data-branch-editor]')).some(editor => range.intersectsNode(editor))) return
+    const paragraphFor = (node: Node) => elementFor(node)?.closest<HTMLElement>('[data-manuscript-paragraph]') ?? null
+    const startParagraph = paragraphFor(range.startContainer)
+    const endParagraph = paragraphFor(range.endContainer)
+    if (!startParagraph || !endParagraph) return
+    const sourceOffset = (paragraph: HTMLElement, node: Node, offset: number) => {
+      const beforePoint = document.createRange()
+      beforePoint.selectNodeContents(paragraph)
+      beforePoint.setEnd(node, offset)
+      const fragment = beforePoint.cloneContents()
+      fragment.querySelectorAll('[data-branch-editor], .inline-branch-trace, .inline-merged-trace').forEach(element => element.remove())
+      return fragment.textContent?.length ?? 0
     }
-    const start = textPosition(range.startContainer, range.startOffset)
-    const end = textPosition(range.endContainer, range.endOffset)
+    const paragraphOffset = (paragraph: HTMLElement) => currentManuscript.paragraphs.slice(0, Number(paragraph.dataset.paragraphIndex)).join('').length
+    const start = paragraphOffset(startParagraph) + sourceOffset(startParagraph, range.startContainer, range.startOffset)
+    const end = paragraphOffset(endParagraph) + sourceOffset(endParagraph, range.endContainer, range.endOffset)
     const text = range.toString().trim()
-    if (!text || start === null || end === null) return
+    if (!text || end <= start) return
     setManuscriptSelection({ start, end, text })
     setSelectionRequired(false)
     window.setTimeout(() => selection.removeAllRanges(), 0)
@@ -370,6 +380,8 @@ export default function App() {
   }
   const mergeBrotherIntoMain = () => {
     setMainContinuation(brotherContinuation)
+    const anchor = brotherContinuationAnchor ?? manuscriptSelection
+    if (anchor) setMainlineContinuationAnchors(current => ({ ...current, 18: anchor }))
     setMainTrace(brotherTrace)
     setBranchMerged(true)
     setVersionsMode('overview')
@@ -378,6 +390,8 @@ export default function App() {
   }
   const acceptBrotherWithoutNavigation = () => {
     setMainContinuation(brotherContinuation)
+    const anchor = brotherContinuationAnchor ?? manuscriptSelection
+    if (anchor) setMainlineContinuationAnchors(current => ({ ...current, 18: anchor }))
     setMainTrace(brotherTrace)
     setBranchMerged(true)
     markImportantChange()
@@ -388,7 +402,9 @@ export default function App() {
     setBranchSaved(false)
     setClueStates({})
     setBrotherContinuation('')
+    setBrotherContinuationAnchor(null)
     setMainContinuation('')
+    setMainlineContinuationAnchors({})
     setMainTrace('')
     setBranchMerged(false)
     markImportantChange()
@@ -429,7 +445,7 @@ export default function App() {
           <div className="side-title"><span>MANUSKRIPT</span><button aria-label="Kapitel hinzufügen"><Plus size={17} /></button></div>
           <div className="book-title"><FileText size={16} /> Der Sommer der Könige</div>
           <div className="chapter-list">{chapters.map(chapter => <button key={chapter.number} onClick={() => selectChapter(chapter.number)} className={`chapter ${activeChapter === chapter.number ? 'selected' : ''}`}><span>Kap. {chapter.number}</span><span>{chapter.title}</span><small>{activeBranch === 'brother' && changedChapters.includes(chapter.number) && <i className="chapter-change-dot" />}S. {chapter.page}</small></button>)}</div>
-          <div className="sidebar-bottom"><button><Search size={16} />Durchsuchen</button><button><CircleHelp size={16} />Hilfe & Feedback</button></div>
+          <div className="sidebar-bottom"><button aria-label="Einstellungen"><Settings size={16} />Einstellungen</button><button><Search size={16} />Durchsuchen</button><button><CircleHelp size={16} />Hilfe & Feedback</button></div>
         </aside>
 
         <section className="editor" aria-label="Manuskript" onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
@@ -437,8 +453,7 @@ export default function App() {
           <div className="editor-meta"><span>Kapitel {activeChapter}</span><span>·</span><span>Seite {currentManuscript.page}</span></div>
           <article className="manuscript" ref={manuscriptRef} onMouseUp={captureSelection} onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
             <h1>{currentManuscript.title}</h1>
-            {(() => { let offset = 0; return currentManuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; const paragraphNotes = privateNotes.filter(note => note.showInMargin !== false && note.chapter === activeChapter && note.selection.end > start && note.selection.end <= offset); const traceText = activeBranch === 'brother' ? brotherTrace : mainTrace; const showBranchTrace = activeChapter === 2 && paragraph.includes('Stallmeister') && traceText && (activeBranch === 'brother' || branchMerged); const insertContinuation = canContinueInBrother && actionAfter; return <div className="manuscript-entry" key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}{showBranchTrace && <span className={activeBranch === 'brother' ? 'inline-branch-trace' : 'inline-merged-trace'}> {traceText}</span>}</p>{paragraphNotes.map(note => <MarginNote key={note.id} note={note} editing={editingNoteId === note.id} onEdit={() => setEditingNoteId(note.id)} onCancel={() => setEditingNoteId(null)} onUpdate={updatePrivateNote} onDelete={deletePrivateNote} />)}{insertContinuation && <><BranchContinuation value={brotherContinuation} onChange={value => { setBrotherContinuation(value); markImportantChange() }} /><div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt<button className="branch-return" onClick={mergeBrotherIntoMain}>Speichern &amp; zur Hauptlinie</button></div></>}{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
-            {activeChapter === 18 && activeBranch === 'main' && <MainlineContinuation value={mainContinuation} onChange={value => { setMainContinuation(value); markImportantChange() }} />}
+            {(() => { let offset = 0; return currentManuscript.paragraphs.map((paragraph, index) => { const start = offset; offset += paragraph.length; const selectionEndsHere = Boolean(manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset); const brotherContinuationEndsHere = Boolean(brotherContinuationAnchor && brotherContinuationAnchor.end > start && brotherContinuationAnchor.end <= offset); const mainlineContinuationEndsHere = Boolean(activeMainlineContinuationAnchor && activeMainlineContinuationAnchor.end > start && activeMainlineContinuationAnchor.end <= offset); const paragraphNotes = privateNotes.filter(note => note.showInMargin !== false && note.chapter === activeChapter && note.selection.end > start && note.selection.end <= offset); const traceText = activeBranch === 'brother' ? brotherTrace : mainTrace; const showBranchTrace = activeChapter === 2 && paragraph.includes('Stallmeister') && traceText && (activeBranch === 'brother' || branchMerged); const insertBrotherContinuation = canContinueInBrother && (brotherContinuationEndsHere || (!brotherContinuationAnchor && selectionEndsHere)); const insertMainlineContinuation = activeBranch === 'main' && (mainlineContinuationEndsHere || (!activeMainlineContinuationAnchor && index === currentManuscript.paragraphs.length - 1)); return <div className="manuscript-entry" key={paragraph}><p data-manuscript-paragraph data-paragraph-index={index}>{selectionParts(paragraph, start, manuscriptSelection)}{showBranchTrace && <span className={activeBranch === 'brother' ? 'inline-branch-trace' : 'inline-merged-trace'}> {traceText}</span>}</p>{paragraphNotes.map(note => <MarginNote key={note.id} note={note} editing={editingNoteId === note.id} onEdit={() => setEditingNoteId(note.id)} onCancel={() => setEditingNoteId(null)} onUpdate={updatePrivateNote} onDelete={deletePrivateNote} />)}{insertBrotherContinuation && <><BranchContinuation value={brotherContinuation} onChange={value => { setBrotherContinuation(value); markImportantChange() }} /><div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt<button className="branch-return" onClick={mergeBrotherIntoMain}>Speichern &amp; zur Hauptlinie</button></div></>}{insertMainlineContinuation && <MainlineContinuation value={activeMainlineContinuation} onChange={value => { if (activeChapter === 18) setMainContinuation(value); else setMainlineContinuations(current => ({ ...current, [activeChapter]: value })); markImportantChange() }} />}{selectionEndsHere && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
             {activeChapter === 18 && activeBranch === 'brother' && <p className="branch-text-legend">Neu im Zweig „Bruder“ · grün unterstrichen = von dir geschrieben</p>}
             {activeChapter === 18 && activeBranch === 'main' && brotherCreated && !branchMerged && <aside className="mainline-branch-hint">Du bist in der Hauptlinie: das Original, ohne die Änderungen aus dem Zweig „Bruder“. Der Zweig bleibt gespeichert.</aside>}
           </article>
@@ -454,6 +469,7 @@ export default function App() {
           {panel === 'empty' && <EmptyPanel onClose={() => setPanel(null)} onExpand={() => { setScope('Ganzes Manuskript'); setPanel('loading') }} />}
           {panel === 'boundary' && <BoundaryPanel onQuestions={() => { setIntent('Was habe ich vergessen?'); setPanel('loading') }} onPerspective={() => { setIntent('Perspektive wechseln'); setPanel('input') }} />}
           {panel === 'clues' && <CluesPanel selected={selectedClue} setSelected={setSelectedClue} clueStates={clueStates} setClueStates={setClueStates} onChange={markImportantChange} onSave={() => { setBranchSaved(true); setActiveBranch('brother'); markImportantChange(); setFeedback({ message: 'Zweig „Bruder“ gesichert · Original bleibt', action: 'Zweig „Bruder“' }); setPanel(null) }} />}
+          {panel === 'clues' && <div className="panel-footer"><button onClick={() => setPanel('result')}><RotateCcw size={15} />Rückgängig</button><button onClick={closePanel}>Panel schließen</button></div>}
           {panel !== 'clues' && <div className="panel-footer"><button onClick={undo} disabled={!feedback && panel !== 'result'}><RotateCcw size={15} />Rückgängig</button><button onClick={resetPanel}>Panel zurücksetzen</button><button onClick={() => setPanel(null)}>Panel schließen</button></div>}
           {feedback && <div className="toast"><span>✓</span><div><strong>{feedback.action}</strong><p>{feedback.message}</p></div><button onClick={undo} aria-label="Rückmeldung schließen"><X size={15} /></button></div>}
         </aside>}
@@ -620,7 +636,7 @@ function BranchContinuation({ value, onChange }: { value: string; onChange: (val
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerText !== value) editorRef.current.innerText = value
   }, [value])
-  return <section className="branch-continuation"><p>Spur gelegt in Kap. 2 · Du kannst hier weiterschreiben.</p><div ref={editorRef} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Im Zweig Bruder weiterschreiben" data-placeholder="Schreib weiter …" title={value ? 'Neu im Zweig „Bruder“ · von dir geschrieben' : undefined} className={`continuation-editor ${value ? 'has-text' : ''}`} onInput={event => onChange(event.currentTarget.innerText)} /></section>
+  return <section className="branch-continuation" data-branch-editor><p>Spur gelegt in Kap. 2 · Du kannst hier weiterschreiben.</p><div ref={editorRef} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Im Zweig Bruder weiterschreiben" data-placeholder="Schreib weiter …" title={value ? 'Neu im Zweig „Bruder“ · von dir geschrieben' : undefined} className={`continuation-editor ${value ? 'has-text' : ''}`} onInput={event => onChange(event.currentTarget.innerText)} /></section>
 }
 
 function MainlineContinuation({ value, onChange }: { value: string; onChange: (value: string) => void }) {

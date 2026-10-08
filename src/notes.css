@@ -276,3 +276,32 @@
   border-color: #5a5751;
   color: #f3f1ed;
 }
+
+.dark-mode .branch-menu button {
+  color: #f3f1ed;
+}
+
+.dark-mode .branch-menu button.active,
+.dark-mode .branch-menu button:hover,
+.dark-mode .branch-menu button:focus-visible {
+  background: #45414c;
+  color: #fff;
+}
+
+.branch-continuation {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.branch-continuation > p {
+  margin-bottom: 7px !important;
+}
+
+.continuation-editor.has-text {
+  min-height: 34px;
+}
+
+.branch-note {
+  margin-top: 10px;
+}
