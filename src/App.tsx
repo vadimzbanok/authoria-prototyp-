@@ -1,6 +1,6 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, CircleHelp, Clock3, FileText, GitBranch, Lightbulb, Plus, RotateCcw, Search, Sparkles, X } from 'lucide-react'
-import { alternativeBranches, assumption, branches, chapterManuscripts, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
+import { assumption, branches, chapterManuscripts, chapters, clues, findings, fundgrubeContradiction, fundgrubeFigures, fundgrubeFindings, fundgrubePlaces, fundgrubeThreads, loadingSteps, manuscript, questions, versionHistory, versionsBranches, type Branch } from './data/mock'
 import './notes.css'
 
 type PanelState = 'input' | 'loading' | 'result' | 'empty' | 'boundary' | 'clues'
@@ -10,7 +10,7 @@ type FundgrubeView = 'Übersicht' | 'Figuren' | 'Orte' | 'Offene Fäden' | 'Wide
 type FundgrubeFilter = 'all' | 'new' | 'confirmed'
 type ManuscriptSelection = { start: number; end: number; text: string }
 type SaveState = 'saving' | 'saved'
-type PrivateNote = { id: string; chapter: number; question: string; text: string; selection: ManuscriptSelection }
+type PrivateNote = { id: string; chapter: number; question: string; text: string; selection: ManuscriptSelection; showInMargin?: boolean; branchId?: string }
 type ClueStatus = { status: 'saved' | 'skipped'; text: string }
 type VersionsMode = 'overview' | 'changes'
 type ActiveBranch = 'main' | 'brother' | 'mira-claim'
@@ -115,6 +115,7 @@ export default function App() {
   const [isQuestionThinking, setIsQuestionThinking] = useState(false)
   const [questionResponse, setQuestionResponse] = useState<string | null>(null)
   const [privateNotes, setPrivateNotes] = useState<PrivateNote[]>([])
+  const [discardedBranchIds, setDiscardedBranchIds] = useState<string[]>([])
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [panelSelection, setPanelSelection] = useState<ManuscriptSelection | null>(null)
   const [panelChapter, setPanelChapter] = useState<number | null>(null)
@@ -122,7 +123,6 @@ export default function App() {
   const [sourceReturnChapter, setSourceReturnChapter] = useState<number | null>(null)
   const [sourceReturnSelection, setSourceReturnSelection] = useState<ManuscriptSelection | null>(null)
   const [selectionRequired, setSelectionRequired] = useState(false)
-  const [showAlternatives, setShowAlternatives] = useState(false)
   const [feedback, setFeedback] = useState<Feedback>(null)
   const [volume, setVolume] = useState('leise')
   const [selectedLens, setSelectedLens] = useState('neutral')
@@ -142,6 +142,7 @@ export default function App() {
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [panelWidth, setPanelWidth] = useState(460)
   const [page, setPage] = useState<Page>('schreibraum')
+  const [fundgrubeView, setFundgrubeView] = useState<FundgrubeView>('Übersicht')
   const [manuscriptSelection, setManuscriptSelection] = useState<ManuscriptSelection | null>(initialManuscriptSelection)
   const manuscriptRef = useRef<HTMLElement>(null)
   const [activeChapter, setActiveChapter] = useState(18)
@@ -217,7 +218,6 @@ export default function App() {
     setIsUnderstandingLoading(false)
     understandingContextRef.current = ''
     understandingLoadingContextRef.current = ''
-    setShowAlternatives(false)
     setSelectedLens('neutral')
   }
   const act = (message: string, action: string) => setFeedback({ message, action })
@@ -239,6 +239,7 @@ export default function App() {
     if (panel === 'clues') {
       setActiveBranch('main')
     }
+    if (destination === 'fundgrube') setFundgrubeView('Übersicht')
     setPage(destination)
   }
   const returnToWritingRoom = () => {
@@ -331,7 +332,7 @@ export default function App() {
   const saveBranchNote = (branch: Branch) => {
     const selection = panelSelection ?? manuscriptSelection ?? initialManuscriptSelection
     const chapter = panelChapter ?? activeChapter
-    setPrivateNotes(current => [...current, { id: `${Date.now()}`, chapter, question: `Was wäre wenn: ${branch.title}`, text: `${branch.description} ${branch.source}`, selection }])
+    setPrivateNotes(current => [...current, { id: `${Date.now()}`, chapter, question: `Was wäre wenn: ${branch.title}`, text: `${branch.description} ${branch.source}`, selection, showInMargin: false, branchId: branch.id }])
     markImportantChange()
     setFeedback({ action: 'Notiz übernommen', message: `„${branch.title}“ findest du jetzt in der Fundgrube unter Notizen.` })
   }
@@ -341,9 +342,16 @@ export default function App() {
     markImportantChange()
   }
   const deletePrivateNote = (id: string) => {
+    const note = privateNotes.find(current => current.id === id)
     setPrivateNotes(current => current.filter(note => note.id !== id))
+    if (note?.branchId) setDiscardedBranchIds(current => current.includes(note.branchId!) ? current : [...current, note.branchId!])
     setEditingNoteId(null)
     markImportantChange()
+  }
+  const discardBranchCard = (branch: Branch) => {
+    setDiscardedBranchIds(current => current.includes(branch.id) ? current : [...current, branch.id])
+    setPrivateNotes(current => current.filter(note => note.branchId !== branch.id))
+    setFeedback({ action: 'Verworfen', message: `„${branch.title}“ und die zugehörige Notiz wurden entfernt.` })
   }
   const openPrivateNote = (note: PrivateNote) => {
     setActiveChapter(note.chapter)
@@ -389,7 +397,7 @@ export default function App() {
   const continueInBranch = () => openBranchChapter(18)
 
   if (page === 'fundgrube') {
-    return <Fundgrube volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} findingsState={findingsState} setFindingsState={setFindingsState} threadStatus={threadStatus} setThreadStatus={setThreadStatus} notes={privateNotes} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onOpenNote={openPrivateNote} onWritingRoom={returnToWritingRoom} onVersions={() => setPage('versionen')} />
+    return <Fundgrube initialView={fundgrubeView} volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} findingsState={findingsState} setFindingsState={setFindingsState} threadStatus={threadStatus} setThreadStatus={setThreadStatus} notes={privateNotes} activeBranch={activeBranch} brotherCreated={brotherCreated} setActiveBranch={changeBranch} onSave={markImportantChange} onOpenNote={openPrivateNote} onWritingRoom={returnToWritingRoom} onVersions={() => setPage('versionen')} />
   }
   if (page === 'versionen') {
     return <Versions volume={volume} setVolume={setVolume} notificationCount={fundgrubeBadge} activeBranch={activeBranch} brotherCreated={brotherCreated} clueStates={clueStates} brotherContinuation={brotherContinuation} mainContinuation={mainContinuation} mainTrace={mainTrace} view={versionsMode} setActiveBranch={changeBranch} onMerge={acceptBrotherWithoutNavigation} onDiscard={discardBrother} onContinue={continueInBranch} onOpenChapter={openBranchChapter} onSave={markImportantChange} onWritingRoom={returnToWritingRoom} onFundgrube={() => setPage('fundgrube')} />
@@ -418,7 +426,7 @@ export default function App() {
           <div className="editor-meta"><span>Kapitel {activeChapter}</span><span>·</span><span>Seite {currentManuscript.page}</span></div>
           <article className="manuscript" ref={manuscriptRef} onMouseUp={captureSelection} onClick={event => { if (event.target === event.currentTarget) setManuscriptSelection(null) }}>
             <h1>{currentManuscript.title}</h1>
-            {(() => { let offset = 0; return currentManuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; const paragraphNotes = privateNotes.filter(note => note.chapter === activeChapter && note.selection.end > start && note.selection.end <= offset); const traceText = activeBranch === 'brother' ? brotherTrace : mainTrace; const showBranchTrace = activeChapter === 2 && paragraph.includes('Stallmeister') && traceText && (activeBranch === 'brother' || branchMerged); const insertContinuation = canContinueInBrother && actionAfter; const insertMergedContinuation = activeChapter === 18 && activeBranch === 'main' && Boolean(mainContinuation) && paragraph.includes(manuscript.selection); return <div className="manuscript-entry" key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}{showBranchTrace && <span className={activeBranch === 'brother' ? 'inline-branch-trace' : 'inline-merged-trace'}> {traceText}</span>}</p>{paragraphNotes.map(note => <MarginNote key={note.id} note={note} editing={editingNoteId === note.id} onEdit={() => setEditingNoteId(note.id)} onCancel={() => setEditingNoteId(null)} onUpdate={updatePrivateNote} onDelete={deletePrivateNote} />)}{insertContinuation && <><BranchContinuation value={brotherContinuation} onChange={value => { setBrotherContinuation(value); markImportantChange() }} /><div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt<button className="branch-return" onClick={mergeBrotherIntoMain}>Speichern &amp; zur Hauptlinie</button></div></>}{insertMergedContinuation && <p className="merged-manuscript-continuation">{mainContinuation}</p>}{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
+            {(() => { let offset = 0; return currentManuscript.paragraphs.map(paragraph => { const start = offset; offset += paragraph.length; const actionAfter = manuscriptSelection && manuscriptSelection.end > start && manuscriptSelection.end <= offset; const paragraphNotes = privateNotes.filter(note => note.showInMargin !== false && note.chapter === activeChapter && note.selection.end > start && note.selection.end <= offset); const traceText = activeBranch === 'brother' ? brotherTrace : mainTrace; const showBranchTrace = activeChapter === 2 && paragraph.includes('Stallmeister') && traceText && (activeBranch === 'brother' || branchMerged); const insertContinuation = canContinueInBrother && actionAfter; const insertMergedContinuation = activeChapter === 18 && activeBranch === 'main' && Boolean(mainContinuation) && paragraph.includes(manuscript.selection); return <div className="manuscript-entry" key={paragraph}><p data-manuscript-paragraph>{selectionParts(paragraph, start, manuscriptSelection)}{showBranchTrace && <span className={activeBranch === 'brother' ? 'inline-branch-trace' : 'inline-merged-trace'}> {traceText}</span>}</p>{paragraphNotes.map(note => <MarginNote key={note.id} note={note} editing={editingNoteId === note.id} onEdit={() => setEditingNoteId(note.id)} onCancel={() => setEditingNoteId(null)} onUpdate={updatePrivateNote} onDelete={deletePrivateNote} />)}{insertContinuation && <><BranchContinuation value={brotherContinuation} onChange={value => { setBrotherContinuation(value); markImportantChange() }} /><div className="branch-note"><span className="check">✓</span> Gespeichert im Zweig <strong>„Bruder“</strong> · Original bleibt<button className="branch-return" onClick={mergeBrotherIntoMain}>Speichern &amp; zur Hauptlinie</button></div></>}{insertMergedContinuation && <p className="merged-manuscript-continuation">{mainContinuation}</p>}{actionAfter && <div className="selection-actions"><span>Markierte Stelle</span><button onClick={openPanel}><Sparkles size={15} />Innehalten zu dieser Stelle</button></div>}</div> }) })()}
             {activeChapter === 18 && activeBranch === 'brother' && <p className="branch-text-legend">Neu im Zweig „Bruder“ · grün unterstrichen = von dir geschrieben</p>}
             {activeChapter === 18 && activeBranch === 'main' && brotherCreated && !branchMerged && <aside className="mainline-branch-hint">Du bist in der Hauptlinie: das Original, ohne die Änderungen aus dem Zweig „Bruder“. Der Zweig bleibt gespeichert.</aside>}
           </article>
@@ -430,7 +438,7 @@ export default function App() {
           {panel !== 'input' && panel !== 'clues' && <div className="panel-context">Bezieht sich auf <strong>{scope}</strong></div>}
           {panel === 'input' && <InputPanel selectionText={selectedText} selectionRequired={selectionRequired} figureNames={selectedFigures} scope={scope} setScope={setScope} intent={intent} setIntent={setIntent} editing={editingAssumption} setEditing={setEditingAssumption} assumptionText={assumptionText} setAssumptionText={setAssumptionText} draft={assumptionDraft} setDraft={setAssumptionDraft} isUnderstandingLoading={isUnderstandingLoading} questionDraft={questionDraft} setQuestionDraft={setQuestionDraft} addedQuestion={addedQuestion} setAddedQuestion={setAddedQuestion} isQuestionThinking={isQuestionThinking} setIsQuestionThinking={setIsQuestionThinking} questionResponse={questionResponse} setQuestionResponse={setQuestionResponse} onSave={markImportantChange} onStart={() => { if (!manuscriptSelection) { setSelectionRequired(true); return }; setPanelSelection(manuscriptSelection); setPanelChapter(activeChapter); setPanel('loading') }} />}
           {panel === 'loading' && <LoadingPanel onCancel={() => setPanel('input')} />}
-          {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={showAlternatives ? alternativeBranches : branches} notes={privateNotes} chapter={activeChapter} onSaveNote={savePrivateNote} onSaveBranchNote={saveBranchNote} onExplore={exploreBranch} onAction={act} onAlternatives={() => setShowAlternatives(true)} onFundgrube={() => setPage('fundgrube')} onOpenChapter={openSourceChapter} />}
+          {panel === 'result' && <ResultPanel lens={selectedLens} setLens={setSelectedLens} branches={branches} notes={privateNotes} chapter={activeChapter} discardedBranchIds={discardedBranchIds} onSaveNote={savePrivateNote} onSaveBranchNote={saveBranchNote} onDiscardBranch={discardBranchCard} onExplore={exploreBranch} onAction={act} onFundgrube={() => { setFundgrubeView('Übersicht'); setPage('fundgrube') }} onOpenChapter={openSourceChapter} />}
           {panel === 'empty' && <EmptyPanel onClose={() => setPanel(null)} onExpand={() => { setScope('Ganzes Manuskript'); setPanel('loading') }} />}
           {panel === 'boundary' && <BoundaryPanel onQuestions={() => { setIntent('Was habe ich vergessen?'); setPanel('loading') }} onPerspective={() => { setIntent('Perspektive wechseln'); setPanel('input') }} />}
           {panel === 'clues' && <CluesPanel selected={selectedClue} setSelected={setSelectedClue} clueStates={clueStates} setClueStates={setClueStates} onChange={markImportantChange} onSave={() => { setBranchSaved(true); setActiveBranch('brother'); markImportantChange(); setFeedback({ message: 'Zweig „Bruder“ gesichert · Original bleibt', action: 'Zweig „Bruder“' }); setPanel(null) }} />}
@@ -488,8 +496,8 @@ function MainlineManuscript({ mainContinuation, mainTrace, onBack }: { mainConti
   return <section className="mainline-manuscript"><div className="mainline-manuscript-head"><div><span>HAUPTLINIE · LESEANSICHT</span><h2>Der Sommer der Könige</h2><p>Aktueller Manuskriptstand · ohne Vergleichsmarkierungen</p></div><button onClick={onBack}>← Zum Verlauf</button></div>{chapters.map(chapter => { const content = chapterManuscripts[chapter.number]; return <article key={chapter.number}><header><span>Kap. {chapter.number}</span><h3>{chapter.title}</h3><small>S. {chapter.page}</small></header>{content.paragraphs.map(paragraph => <p key={paragraph}>{paragraph}{chapter.number === 2 && paragraph.includes('Stallmeister') && mainTrace ? <> {mainTrace}</> : null}{chapter.number === 18 && paragraph.includes(manuscript.selection) && mainContinuation ? <><br />{mainContinuation}</> : null}</p>)}</article>})}</section>
 }
 
-function Fundgrube({ volume, setVolume, notificationCount, findingsState, setFindingsState, threadStatus, setThreadStatus, notes, activeBranch, brotherCreated, setActiveBranch, onSave, onOpenNote, onWritingRoom, onVersions }: { volume: string; setVolume: (value: string) => void; notificationCount: number; findingsState: Record<string, 'new' | 'confirmed' | 'removed'>; setFindingsState: React.Dispatch<React.SetStateAction<Record<string, 'new' | 'confirmed' | 'removed'>>>; threadStatus: Record<string, string>; setThreadStatus: React.Dispatch<React.SetStateAction<Record<string, string>>>; notes: PrivateNote[]; activeBranch: ActiveBranch; brotherCreated: boolean; setActiveBranch: (branch: ActiveBranch) => void; onSave: () => void; onOpenNote: (note: PrivateNote) => void; onWritingRoom: () => void; onVersions: () => void }) {
-  const [view, setView] = useState<FundgrubeView>('Übersicht')
+function Fundgrube({ initialView, volume, setVolume, notificationCount, findingsState, setFindingsState, threadStatus, setThreadStatus, notes, activeBranch, brotherCreated, setActiveBranch, onSave, onOpenNote, onWritingRoom, onVersions }: { initialView: FundgrubeView; volume: string; setVolume: (value: string) => void; notificationCount: number; findingsState: Record<string, 'new' | 'confirmed' | 'removed'>; setFindingsState: React.Dispatch<React.SetStateAction<Record<string, 'new' | 'confirmed' | 'removed'>>>; threadStatus: Record<string, string>; setThreadStatus: React.Dispatch<React.SetStateAction<Record<string, string>>>; notes: PrivateNote[]; activeBranch: ActiveBranch; brotherCreated: boolean; setActiveBranch: (branch: ActiveBranch) => void; onSave: () => void; onOpenNote: (note: PrivateNote) => void; onWritingRoom: () => void; onVersions: () => void }) {
+  const [view, setView] = useState<FundgrubeView>(initialView)
   const [filter, setFilter] = useState<FundgrubeFilter>('all')
   const [contradictionVisible, setContradictionVisible] = useState(true)
   const visibleFindings = fundgrubeFindings.filter(finding => findingsState[finding.id] !== 'removed')
@@ -569,9 +577,11 @@ function InputPanel(props: { selectionText: string; selectionRequired: boolean; 
 
 function LoadingPanel({ onCancel }: { onCancel: () => void }) { return <div className="panel-content loading"><div className="loading-orbit"><span></span><Sparkles size={23} /></div><h3>Ich sehe mir deine Spuren an</h3><p>Ich prüfe nur den gewählten Bereich und ändere nichts an deinem Text.</p><ul>{loadingSteps.map((step, index) => <li key={step} className={index < 2 ? 'done' : 'working'}><span>{index < 2 ? '✓' : '…'}</span>{step}</li>)}</ul><button className="secondary-button" onClick={onCancel}>Abbrechen</button></div> }
 
-function ResultPanel({ lens, setLens, branches: shownBranches, notes, chapter, onSaveNote, onSaveBranchNote, onExplore, onAction, onAlternatives, onFundgrube, onOpenChapter }: { lens: string; setLens: (value: string) => void; branches: Branch[]; notes: PrivateNote[]; chapter: number; onSaveNote: (question: string, text: string) => boolean; onSaveBranchNote: (branch: Branch) => void; onExplore: (branch: Branch) => void; onAction: (message: string, action: string) => void; onAlternatives: () => void; onFundgrube: () => void; onOpenChapter: (chapter: number) => void }) {
+function ResultPanel({ lens, setLens, branches: shownBranches, notes, chapter, discardedBranchIds, onSaveNote, onSaveBranchNote, onDiscardBranch, onExplore, onAction, onFundgrube, onOpenChapter }: { lens: string; setLens: (value: string) => void; branches: Branch[]; notes: PrivateNote[]; chapter: number; discardedBranchIds: string[]; onSaveNote: (question: string, text: string) => boolean; onSaveBranchNote: (branch: Branch) => void; onDiscardBranch: (branch: Branch) => void; onExplore: (branch: Branch) => void; onAction: (message: string, action: string) => void; onFundgrube: () => void; onOpenChapter: (chapter: number) => void }) {
   const [openQuestion, setOpenQuestion] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [discardingBranchId, setDiscardingBranchId] = useState<string | null>(null)
+  const branchReferences: Record<string, string> = { mira: 'Kap. 7, S. 108 ↗', council: 'Kap. 17, S. 286 ↗' }
   const saveQuestion = () => {
     if (!openQuestion || !draft.trim()) return
     if (!onSaveNote(openQuestion, draft)) return
@@ -581,7 +591,7 @@ function ResultPanel({ lens, setLens, branches: shownBranches, notes, chapter, o
   return <div className="panel-content result">
     <section><div className="section-title"><h3>Fundstücke</h3><span className="count">{findings.length}</span></div>{findings.map(finding => <article className="finding" key={finding.title}><span>{finding.label}</span><h4>{finding.title}</h4><p>{finding.text}</p><SourceLine sources={finding.sources} onOpenChapter={onOpenChapter} /><button className="fundgrube-link" onClick={onFundgrube}>In der Fundgrube ansehen <ArrowLeft className="arrow-right" size={13} /></button></article>)}</section>
     <section><div className="section-title"><h3>Fragen an dich</h3></div><ol className="questions">{questions.map((question, index) => { const hasNote = notes.some(note => note.chapter === chapter && note.question === question); const isOpen = openQuestion === question; return <li key={question}><span className="question-number">{index + 1}</span><div><button onClick={() => { setOpenQuestion(isOpen ? null : question); setDraft('') }}>{question}</button>{isOpen && <div className="question-note-entry"><textarea value={draft} onChange={event => setDraft(event.target.value)} placeholder="Deine Gedanken (nur für dich) …" aria-label={`Notiz zu: ${question}`} /><div><button className="save-note" disabled={!draft.trim()} onClick={saveQuestion}>Merken</button><button onClick={() => { setOpenQuestion(null); setDraft('') }}>Abbrechen</button></div></div>}{hasNote && !isOpen && <small className="question-saved">✓ Notiz gemerkt</small>}</div></li> })}</ol></section>
-    <section><div className="section-title"><h3>Was wäre wenn …</h3><span className="ai-tag" aria-label="KI-Hinweis"><Sparkles size={11} /></span></div><div className="branch-list">{shownBranches.map(branch => <article className="branch-card" key={branch.id}><h4>{branch.title}</h4><p>{branch.description}</p>{branch.id === 'brother' ? <button className="branch-source-link" onClick={() => onOpenChapter(2)}>Kap. 2, S. 31 ↗</button> : <small>{branch.source}</small>}<div className="branch-actions"><button className="branch-primary" onClick={() => onExplore(branch)}>Spuren suchen</button><button onClick={() => onSaveBranchNote(branch)}>Notiz</button><button onClick={() => onAction(`„${branch.title}“ wurde für später vorgemerkt.`, 'Für später vorgemerkt')}><Clock3 size={14} /></button><button onClick={() => onAction(`„${branch.title}“ wird nicht mehr angezeigt.`, 'Verworfen')}>Verwerfen</button></div></article>)}</div><button className="text-button" onClick={onAlternatives}>Andere Zweige zeigen <ArrowLeft className="arrow-right" size={15} /></button></section>
+    <section><div className="section-title"><h3>Was wäre wenn …</h3><span className="ai-tag" aria-label="KI-Hinweis"><Sparkles size={11} /></span></div><div className="branch-list">{shownBranches.filter(branch => !discardedBranchIds.includes(branch.id)).map(branch => <article className="branch-card" key={branch.id}><h4>{branch.title}</h4><p>{branch.description}</p>{branch.id === 'brother' ? <button className="branch-source-link" onClick={() => onOpenChapter(2)}>Kap. 2, S. 31 ↗</button> : <small className="branch-source-text">{branchReferences[branch.id] ?? branch.source}</small>}{discardingBranchId === branch.id ? <div className="branch-discard-confirm"><p>Wirklich verwerfen?</p><button onClick={() => { setDiscardingBranchId(null); onDiscardBranch(branch) }}>Verwerfen</button><button onClick={() => setDiscardingBranchId(null)}>Abbrechen</button></div> : <div className="branch-actions"><button className="branch-primary" onClick={() => onExplore(branch)}>Spuren suchen</button><button onClick={() => onSaveBranchNote(branch)}>Notiz</button><button onClick={() => onAction(`„${branch.title}“ wurde für später vorgemerkt.`, 'Für später vorgemerkt')}><Clock3 size={14} /></button><button onClick={() => setDiscardingBranchId(branch.id)}>Verwerfen</button></div>}</article>)}</div></section>
     <section className="lens"><h3>Linse</h3><div className="chips">{['neutral', 'aus Miras Sicht', 'aus Teos Sicht'].map(value => <Chip key={value} active={lens === value} onClick={() => setLens(value)}>{value}</Chip>)}</div></section>
   </div>
 }
